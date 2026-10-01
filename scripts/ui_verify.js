@@ -11,7 +11,7 @@ async (page) => {
   await page.waitForFunction(() => document.getElementById('status-label')?.textContent === 'Connected');
   const seed = `ui-seed-${run}`;
   const seeded = await page.request.post(`${origin}/locations`, { data: { device_id: seed, latitude: 56.9496, longitude: 24.1052, timestamp: new Date().toISOString() } });
-  if (seeded.status() !== 200) throw new Error(`Seed report failed: ${seeded.status()}`);
+  if (seeded.status() !== 202) throw new Error(`Seed report failed: ${seeded.status()}`);
   await page.waitForFunction((id) => positions.has(id), seed);
   const second = await page.context().newPage();
   const outsider = await page.context().newPage();
@@ -41,10 +41,12 @@ async (page) => {
     await second.waitForFunction((name) => document.getElementById('zones').textContent.includes(name), `QA depot ${run}`);
     const zones = await (await page.request.get(`${origin}/geozones`, { headers: { 'X-User-ID': owner } })).json();
     zoneId = zones.items.find((z) => z.name === `QA depot ${run}`).id;
+    await page.evaluate(() => map.setView([57.5, 25.5], 14));
+    await page.waitForTimeout(800);
     const prefix = new Date().toISOString().slice(0, 19);
     for (const [suffix, latitude] of [['000100', 57.5], ['000900', 57.5002]]) {
       const response = await page.request.post(`${origin}/locations`, { data: { device_id: device, latitude, longitude: 25.5, timestamp: `${prefix}.${suffix}Z` } });
-      if (response.status() !== 200) throw new Error(`Report failed: ${response.status()}`);
+      if (response.status() !== 202) throw new Error(`Report failed: ${response.status()}`);
     }
     await page.waitForFunction((id) => alertFeed.filter((item) => item.device_id === id).length === 2, device);
     await second.waitForFunction((id) => alertFeed.filter((item) => item.device_id === id).length === 2, device);
@@ -76,7 +78,6 @@ async (page) => {
     await page.getByRole('button', { name: 'Brief', exact: true }).click();
     await page.waitForFunction(() => document.getElementById('insights').textContent.includes('Reporting in the last minute'));
     results.real_brief = true;
-    results.assistant_status = await page.locator('#assistant-status').innerText();
     await page.getByRole('button', { name: 'Fleet', exact: true }).click();
     await page.evaluate(() => map.setView([56.9496, 24.1052], 14));
     await page.locator('#fleet-search').blur();
