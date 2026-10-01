@@ -5,7 +5,7 @@ Take-home submission: real-time geo-tracking on FastAPI, PostGIS, Kafka and NATS
 ## Commands
 
 - Stack: `docker compose up --build -d --wait`. Python tooling runs through uv: `uv sync --frozen`, `uv run …`.
-- Gate before every commit: `uv run ruff check && uv run ruff format --check`, plus `docker compose --profile test run --build --no-deps --rm tests` when Python under `geo_tracking/` changed, plus `docker run --rm -v "$PWD/ops/prometheus:/p:ro" -w /p --entrypoint promtool prom/prometheus:v3.5.0 test rules rules_test.yml` when `ops/prometheus` changed.
+- Gate before every commit: `uv run ruff check && uv run ruff format --check && uv run mypy geo_tracking && uv run vulture geo_tracking scripts generator.py --min-confidence 80` (never during a benchmark: mypy competes for CPU), plus `docker compose --profile test run --build --no-deps --rm tests` when Python under `geo_tracking/` changed, plus `docker run --rm -v "$PWD/ops/prometheus:/p:ro" -w /p --entrypoint promtool prom/prometheus:v3.5.0 test rules rules_test.yml` when `ops/prometheus` changed.
 - Proving behaviour or capacity: the `drive-fleet` skill.
 
 ## Invariants that break silently

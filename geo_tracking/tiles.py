@@ -30,7 +30,7 @@ def viewport_subjects(
 ) -> set[str]:
     spans = [(west, east)] if west <= east else [(west, 180.0), (-180.0, east)]
     for level in range(TILE_LEVEL, -1, -1):
-        tiles = set()
+        tiles: set[tuple[int, int]] = set()
         for low, high in spans:
             x0, y0 = tile(north, low, level)
             x1, y1 = tile(south, high, level)

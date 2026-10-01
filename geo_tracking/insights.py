@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,7 +29,7 @@ FROM geozones WHERE user_id = :user_id
 """)
 
 
-async def insights(session: AsyncSession, user_id: str) -> dict:
+async def insights(session: AsyncSession, user_id: str) -> dict[str, Any]:
     fleet = dict((await session.execute(FLEET_SQL)).mappings().one())
     zones = (await session.execute(ZONE_SQL, {"user_id": user_id})).mappings().all()
     counts = (await session.execute(COUNT_SQL, {"user_id": user_id})).mappings().one()

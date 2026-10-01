@@ -3,6 +3,7 @@ import logging
 import signal
 from collections import defaultdict
 from time import monotonic, time
+from typing import Any
 
 import orjson
 from aiohttp import web
@@ -37,7 +38,7 @@ class PublishStalled(Exception):
     pass
 
 
-def frame(kind: str, items: list) -> bytes:
+def frame(kind: str, items: list[Any]) -> bytes:
     return orjson.dumps({"type": kind, "items": items})
 
 
@@ -75,7 +76,7 @@ class Processor(ConsumerRebalanceListener):
                 record
                 for record in live
                 if record[0] in advanced
-                and (advanced[record[0]] is None or record[3] > advanced[record[0]])
+                and ((previous := advanced[record[0]]) is None or record[3] > previous)
             ]
             emitted = replayed + fresh
             matches = await match_records(session, emitted) if emitted else []
@@ -84,12 +85,12 @@ class Processor(ConsumerRebalanceListener):
         RECORDS.labels("stale").inc(len(live) - len(fresh))
         RECORDS.labels("committed").inc(len(fresh))
         ALERTS.inc(len(matches))
-        positions: dict[str, list] = defaultdict(list)
+        positions: dict[str, list[Any]] = defaultdict(list[Any])
         for record in emitted:
             positions[position_subject(self.settings.subject_prefix, record[1], record[2])].append(
                 record
             )
-        alerts: dict[str, list] = defaultdict(list)
+        alerts: dict[str, list[Any]] = defaultdict(list[Any])
         for match in matches:
             record = emitted[match["report_index"]]
             alerts[match["user_id"]].append(

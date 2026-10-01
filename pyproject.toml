@@ -45,3 +45,15 @@ select = ["E", "F", "I", "UP", "B", "ASYNC"]
 
 [tool.uv]
 package = false
+
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["asyncpg.*", "aiokafka.*", "confluent_kafka.*", "geoalchemy2.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["geo_tracking.processor"]
+disallow_subclassing_any = false

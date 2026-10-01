@@ -1,6 +1,6 @@
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, cast
 
 import aiohttp
 from fastapi import Depends, Header
@@ -34,7 +34,7 @@ async def zones_changed(nats: Client, subjects: Subjects, user_id: str) -> None:
 
 
 def services(connection: HTTPConnection) -> Services:
-    return connection.app.state.services
+    return cast(Services, connection.app.state.services)
 
 
 ServicesDep = Annotated[Services, Depends(services)]

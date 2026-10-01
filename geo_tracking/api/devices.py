@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from geoalchemy2 import Geometry
@@ -52,7 +52,7 @@ async def latest(
     envelopes: Annotated[list[Envelope], Depends(bounds)],
     after: str | None = None,
     limit: int = Query(1000, ge=1, le=1000),
-) -> dict:
+) -> dict[str, Any]:
     point = cast(DeviceLatest.position, Geometry("POINT", srid=4326))
     query = (
         select(
@@ -77,5 +77,5 @@ async def latest(
 
 
 @router.get("/insights")
-async def current_insights(user: User, session: Session) -> dict:
+async def current_insights(user: User, session: Session) -> dict[str, Any]:
     return await insights(session, user)

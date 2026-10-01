@@ -31,7 +31,7 @@ class Connection:
         self.wake = asyncio.Event()
         self.reason: str | None = None
         self.subjects: set[str] = set()
-        self.writer: asyncio.Task | None = None
+        self.writer: asyncio.Task[None] | None = None
 
     def enqueue(self, data: bytes) -> bool:
         if self.reason is not None:

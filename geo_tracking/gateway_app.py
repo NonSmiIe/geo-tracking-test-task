@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any, cast
 
 from fastapi import FastAPI, Response, WebSocket
 from starlette.requests import HTTPConnection
@@ -34,14 +35,14 @@ def create_gateway_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Fleetline gateway", lifespan=lifespan)
 
     def gateway(connection: HTTPConnection) -> Gateway:
-        return connection.app.state.gateway
+        return cast(Gateway, connection.app.state.gateway)
 
     @app.websocket("/ws")
     async def dashboard(socket: WebSocket, user_id: Identifier) -> None:
         await gateway(socket).serve(socket, user_id)
 
     @app.get("/health/live")
-    async def live() -> dict:
+    async def live() -> dict[str, Any]:
         return {"status": "alive"}
 
     @app.get("/metrics", include_in_schema=False)

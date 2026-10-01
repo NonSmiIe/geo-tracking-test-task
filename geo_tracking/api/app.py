@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from functools import partial
 from pathlib import Path
+from typing import Any
 
 import aiohttp
 import msgspec
@@ -74,7 +75,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     original = app.openapi
 
-    def openapi() -> dict:
+    def openapi() -> dict[str, Any]:
         schema = original()
         (_,), components = msgspec.json.schema_components(
             [Report], ref_template="#/components/schemas/{name}"
@@ -82,7 +83,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         schema.setdefault("components", {}).setdefault("schemas", {}).update(components)
         return schema
 
-    app.openapi = openapi
+    app.openapi = openapi  # type: ignore[method-assign]
 
     @app.get("/", include_in_schema=False)
     async def index() -> FileResponse:

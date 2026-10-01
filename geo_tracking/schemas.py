@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from functools import cache
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
 import msgspec
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
@@ -30,7 +30,7 @@ class Report(msgspec.Struct, forbid_unknown_fields=True, frozen=True):
         if self.timestamp > datetime.now(UTC) + CLOCK_SKEW:
             raise ValueError("timestamp is in the future")
 
-    def record(self) -> list:
+    def record(self) -> list[Any]:
         return [self.device_id, self.latitude, self.longitude, microseconds(self.timestamp)]
 
 
@@ -38,7 +38,7 @@ class Flush(msgspec.Struct, tag_field="type", tag="flush", forbid_unknown_fields
     pass
 
 
-def reports(limit: int) -> type:
+def reports(limit: int) -> Any:
     return Annotated[list[Report], msgspec.Meta(min_length=1, max_length=limit)]
 
 
@@ -46,12 +46,12 @@ REPORT = msgspec.json.Decoder(Report)
 
 
 @cache
-def batch_decoder(limit: int) -> msgspec.json.Decoder:
+def batch_decoder(limit: int) -> msgspec.json.Decoder[Any]:
     return msgspec.json.Decoder(reports(limit))
 
 
 @cache
-def frame_decoder(limit: int) -> msgspec.json.Decoder:
+def frame_decoder(limit: int) -> msgspec.json.Decoder[Any]:
     return msgspec.json.Decoder(reports(limit) | Flush)
 
 

@@ -1,5 +1,6 @@
 import asyncio
 import math
+from typing import Any
 
 import aiohttp
 from fastapi import APIRouter, HTTPException, Response
@@ -17,7 +18,7 @@ STATS = {
 
 
 @router.get("/health/live")
-async def live() -> dict:
+async def live() -> dict[str, Any]:
     return {"status": "alive"}
 
 
@@ -28,7 +29,7 @@ async def metrics() -> Response:
 
 
 @router.get("/stats")
-async def stats(services: ServicesDep) -> dict:
+async def stats(services: ServicesDep) -> dict[str, Any]:
     async def value(expression: str) -> float | None:
         async with services.prometheus.get(
             "/api/v1/query", params={"query": expression}

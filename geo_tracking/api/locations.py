@@ -21,7 +21,7 @@ async def bounded_body(request: Request, limit: int) -> bytes:
     return bytes(body)
 
 
-async def publish(services: Services, reports: list[Report]) -> dict:
+async def publish(services: Services, reports: list[Report]) -> dict[str, Any]:
     try:
         await services.ingest.publish(reports)
     except Overloaded:
@@ -31,7 +31,7 @@ async def publish(services: Services, reports: list[Report]) -> dict:
     return {"accepted": len(reports)}
 
 
-def parse(decoder: msgspec.json.Decoder, body: bytes) -> Any:
+def parse(decoder: msgspec.json.Decoder[Any], body: bytes) -> Any:
     try:
         return decoder.decode(body)
     except msgspec.DecodeError as error:
@@ -43,7 +43,7 @@ def parse(decoder: msgspec.json.Decoder, body: bytes) -> Any:
     status_code=202,
     openapi_extra={"requestBody": {"content": {"application/json": {"schema": REPORT_SCHEMA}}}},
 )
-async def location(request: Request, services: ServicesDep) -> dict:
+async def location(request: Request, services: ServicesDep) -> dict[str, Any]:
     body = await bounded_body(request, services.settings.body_bytes)
     return await publish(services, [parse(REPORT, body)])
 
@@ -57,7 +57,7 @@ async def location(request: Request, services: ServicesDep) -> dict:
         }
     },
 )
-async def batch(request: Request, services: ServicesDep) -> dict:
+async def batch(request: Request, services: ServicesDep) -> dict[str, Any]:
     body = await bounded_body(request, services.settings.body_bytes)
     return await publish(services, parse(batch_decoder(services.settings.batch_reports), body))
 

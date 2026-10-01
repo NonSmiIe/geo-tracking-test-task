@@ -2,6 +2,7 @@ import asyncio
 import math
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import HTTPException
@@ -32,9 +33,9 @@ class Demo:
             ingest,
             zones_changed,
         )
-        self.tasks: dict[str, asyncio.Task] = {}
+        self.tasks: dict[str, asyncio.Task[None]] = {}
 
-    def describe(self, user_id: str, running: bool) -> dict:
+    def describe(self, user_id: str, running: bool) -> dict[str, Any]:
         zone_id = uuid5(NAMESPACE_URL, f"fleetline-demo:{user_id}")
         return {
             "running": running,
@@ -50,7 +51,7 @@ class Demo:
     def horizon(self) -> datetime:
         return datetime.now(UTC) - timedelta(seconds=self.settings.demo_seconds)
 
-    async def status(self, user_id: str) -> dict:
+    async def status(self, user_id: str) -> dict[str, Any]:
         async with self.db.sessions() as session:
             started = await session.scalar(
                 select(DemoRun.started_at).where(
@@ -59,7 +60,7 @@ class Demo:
             )
         return self.describe(user_id, started is not None)
 
-    async def start(self, user_id: str) -> dict:
+    async def start(self, user_id: str) -> dict[str, Any]:
         state = self.describe(user_id, True)
         async with self.db.sessions() as session, session.begin():
             await session.execute(text("SELECT pg_advisory_xact_lock(hashtext('demo_runs'))"))
@@ -70,11 +71,13 @@ class Demo:
             )
             if running is not None:
                 return state
-            others = await session.scalar(
-                select(func.count()).where(
-                    DemoRun.user_id != user_id, DemoRun.started_at > self.horizon()
+            others = (
+                await session.execute(
+                    select(func.count()).where(
+                        DemoRun.user_id != user_id, DemoRun.started_at > self.horizon()
+                    )
                 )
-            )
+            ).scalar_one()
             if others >= self.settings.demo_limit:
                 raise HTTPException(429, "demo_capacity")
             started = datetime.now(UTC)
@@ -122,7 +125,7 @@ class Demo:
                 is not None
             )
 
-    async def move(self, user_id: str, started: datetime, state: dict) -> None:
+    async def move(self, user_id: str, started: datetime, state: dict[str, Any]) -> None:
         try:
             for tick in range(self.settings.demo_seconds):
                 if not await self.current(user_id, started):
@@ -144,7 +147,7 @@ class Demo:
             if self.tasks.get(user_id) is asyncio.current_task():
                 del self.tasks[user_id]
 
-    async def stop(self, user_id: str) -> dict:
+    async def stop(self, user_id: str) -> dict[str, Any]:
         async with self.db.sessions() as session, session.begin():
             await session.execute(delete(DemoRun).where(DemoRun.user_id == user_id))
         task = self.tasks.get(user_id)

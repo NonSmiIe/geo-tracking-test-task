@@ -1,3 +1,4 @@
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
@@ -11,7 +12,7 @@ from geo_tracking.schemas import ZoneCreate, ZoneUpdate
 router = APIRouter(prefix="/geozones", tags=["geozones"])
 
 
-def zone_query() -> Select:
+def zone_query() -> Select[Any]:
     point = cast(Zone.center, Geometry("POINT", srid=4326))
     return select(
         Zone.id,
@@ -39,17 +40,19 @@ async def owned(session: Session, zone_id: UUID, user: str) -> Zone:
     return zone
 
 
-async def present(session: Session, zone_id: UUID) -> dict:
+async def present(session: Session, zone_id: UUID) -> dict[str, Any]:
     return dict((await session.execute(zone_query().where(Zone.id == zone_id))).mappings().one())
 
 
 @router.post("", status_code=201)
 async def create_zone(
     payload: ZoneCreate, user: User, session: Session, services: ServicesDep
-) -> dict:
+) -> dict[str, Any]:
     async with session.begin():
         await session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:user))"), {"user": user})
-        total = await session.scalar(select(func.count()).where(Zone.user_id == user))
+        total = (
+            await session.execute(select(func.count()).where(Zone.user_id == user))
+        ).scalar_one()
         if total >= services.settings.max_zones_per_user:
             raise HTTPException(409, "zone_quota_exceeded")
         zone = Zone(
@@ -72,7 +75,7 @@ async def list_zones(
     session: Session,
     after: UUID | None = None,
     limit: int = Query(100, ge=1, le=1000),
-) -> dict:
+) -> dict[str, Any]:
     query = zone_query().where(Zone.user_id == user).order_by(Zone.id).limit(limit + 1)
     if after:
         query = query.where(Zone.id > after)
@@ -84,7 +87,7 @@ async def list_zones(
 
 
 @router.get("/{zone_id}")
-async def get_zone(zone_id: UUID, user: User, session: Session) -> dict:
+async def get_zone(zone_id: UUID, user: User, session: Session) -> dict[str, Any]:
     row = (
         (await session.execute(zone_query().where(Zone.id == zone_id, Zone.user_id == user)))
         .mappings()
@@ -98,7 +101,7 @@ async def get_zone(zone_id: UUID, user: User, session: Session) -> dict:
 @router.patch("/{zone_id}")
 async def update_zone(
     zone_id: UUID, payload: ZoneUpdate, user: User, session: Session, services: ServicesDep
-) -> dict:
+) -> dict[str, Any]:
     async with session.begin():
         zone = await owned(session, zone_id, user)
         values = payload.model_dump(exclude_unset=True)

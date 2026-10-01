@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from geoalchemy2 import Geography, Geometry, WKBElement
+from geoalchemy2 import Geography, Geometry, WKBElement, WKTElement
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -37,7 +37,9 @@ class Zone(Base):
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[str] = mapped_column(String(96))
     name: Mapped[str] = mapped_column(String(120))
-    center: Mapped[WKBElement] = mapped_column(Geography("POINT", srid=4326, spatial_index=False))
+    center: Mapped[WKBElement | WKTElement] = mapped_column(
+        Geography("POINT", srid=4326, spatial_index=False)
+    )
     radius_m: Mapped[float] = mapped_column(Float)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
