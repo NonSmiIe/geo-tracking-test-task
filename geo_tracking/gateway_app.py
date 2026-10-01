@@ -41,10 +41,6 @@ def create_gateway_app(settings: Settings | None = None) -> FastAPI:
     async def live() -> dict:
         return {"status": "alive"}
 
-    @app.get("/health/ready")
-    async def ready() -> dict:
-        return {"status": "ready"}
-
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:
         body, content_type = exposition("gateway")

@@ -63,6 +63,10 @@ def observe(url: str, user: str, viewport: dict, prefix: str, interval: float, r
     period = interval * 1_000_000
 
     async def subscribe() -> websockets.ClientConnection:
+        async with asyncio.timeout(15):
+            return await handshake()
+
+    async def handshake() -> websockets.ClientConnection:
         socket = await websockets.connect(
             url.replace("http", "ws", 1) + f"/ws?user_id={user}", max_size=None, max_queue=None
         )
@@ -94,7 +98,7 @@ def observe(url: str, user: str, viewport: dict, prefix: str, interval: float, r
                     try:
                         socket = await subscribe()
                         break
-                    except (OSError, websockets.WebSocketException):
+                    except (OSError, TimeoutError, websockets.WebSocketException):
                         continue
                 if stop.is_set():
                     break
@@ -301,31 +305,33 @@ async def benchmark(args: argparse.Namespace) -> dict:
                     )
                     for index, (user, view) in enumerate(sessions)
                 ]
-                for ready in readies:
-                    await loop.run_in_executor(None, ready.wait, 30)
-                injector = asyncio.create_task(inject(args.fault, faults))
-                generated = await run(
-                    Config(
-                        url=args.url,
-                        devices=args.devices,
-                        interval=args.interval,
-                        duration=args.duration,
-                        processes=args.processes,
-                        connections=args.connections,
-                        latitude=args.latitude,
-                        longitude=args.longitude,
-                        spread_km=args.spread_km,
-                        prefix=prefix,
-                    ),
-                    probes=[sorted(viewport_subjects("p", **PROBE, limit=16))],
-                )
-                await injector
-                for _ in range(180):
-                    if await value(TOTALS["consumer_lag"]) == 0:
-                        break
-                    await asyncio.sleep(1)
-                await asyncio.sleep(SCRAPE_SETTLE_SECONDS)
-                stop.set()
+                try:
+                    for ready in readies:
+                        await loop.run_in_executor(None, ready.wait, 30)
+                    injector = asyncio.create_task(inject(args.fault, faults))
+                    generated = await run(
+                        Config(
+                            url=args.url,
+                            devices=args.devices,
+                            interval=args.interval,
+                            duration=args.duration,
+                            processes=args.processes,
+                            connections=args.connections,
+                            latitude=args.latitude,
+                            longitude=args.longitude,
+                            spread_km=args.spread_km,
+                            prefix=prefix,
+                        ),
+                        probes=[sorted(viewport_subjects("p", **PROBE, limit=16))],
+                    )
+                    await injector
+                    for _ in range(180):
+                        if await value(TOTALS["consumer_lag"]) == 0:
+                            break
+                        await asyncio.sleep(1)
+                    await asyncio.sleep(SCRAPE_SETTLE_SECONDS)
+                finally:
+                    stop.set()
                 observed = await asyncio.gather(*watchers)
                 stored = await stored_latest(args.project, prefix)
         finally:

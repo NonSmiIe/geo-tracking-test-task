@@ -1,0 +1,10 @@
+ calls | total_ms | mean_ms | blks_read |                                        q                                         
+-------+----------+---------+-----------+----------------------------------------------------------------------------------
+  7387 |   516005 |   69.85 |        90 | INSERT INTO device_latest AS device (device_id, position, reported_at) SELECT de
+  7388 |   444644 |   60.18 |         0 | SELECT device_id, (extract(epoch FROM reported_at) * 1000000)::bigint FROM devic
+  7388 |   220370 |   29.83 |         0 | WITH samples AS MATERIALIZED ( SELECT ordinality - 1 AS report_index, ST_SetSRID
+  6616 |     2537 |    0.38 |         0 | INSERT INTO consumer_progress AS progress (topic, partition, persisted) SELECT $
+  1645 |     2249 |    1.37 |         0 | SELECT pg_database_size($1)
+  7388 |     1296 |    0.18 |         0 | SELECT partition, persisted FROM consumer_progress WHERE topic = $1
+(6 rows)
+

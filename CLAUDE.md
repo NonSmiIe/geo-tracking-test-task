@@ -12,7 +12,7 @@ Take-home submission: real-time geo-tracking on FastAPI, PostGIS, Kafka and NATS
 
 - **One owner per device.** Kafka is keyed by `device_id`, and a device's watermark is safe only because one processor owns its partition. Never produce reports with another key, and never let two consumers of the group share a partition.
 - **Order inside a processor batch:** DB commit → NATS publish + flush → Kafka offset commit. Committing offsets earlier loses reports on a crash; publishing before the DB commit sends events for rolled-back data.
-- **Every fresh sample is matched before the latest-only reduction** in `persist_latest`. Collapsing earlier drops alerts for devices that cross a zone inside one batch.
+- **Freshness comes from the upsert's `RETURNING old.reported_at`.** A sample is fresh only if its device came back from the upsert and the sample is newer than that old watermark. The upsert writes only each device's newest sample, but matching runs on every fresh sample; collapsing before matching drops alerts for devices that cross a zone inside one batch.
 - **The upsert stays monotonic** (`WHERE device.reported_at < excluded.reported_at`). It is the guard against a zombie owner during a rebalance.
 - **`zone_footprint` must stay a superset of the geodesic circle.** It is only a candidate filter; `test_footprint_candidates_equal_exact_geography_everywhere` is the proof. Run that test after any change to the function or the matching query.
 - **`grid_cells(area)` must cover every cell a point inside `area` can have**, or snapshots and occupancy silently drop devices. `grid_cell` holds the only cell formula; `test_grid_cells_never_exclude_a_point_inside_the_box` is the proof.

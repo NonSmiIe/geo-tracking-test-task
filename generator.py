@@ -22,6 +22,9 @@ from geo_tracking.tiles import position_subject
 EARTH_RADIUS = 6371008.8
 
 
+DRAIN_SECONDS = 120
+
+
 class LaneLost(Exception):
     pass
 
@@ -295,12 +298,16 @@ async def produce(config: Config, index: int, probes: list[list[str]]) -> Shard:
                 await asyncio.sleep(0)
 
     if config.transport == "ws":
-        async with asyncio.TaskGroup() as group:
-            for lane in queues:
-                group.create_task(stream(lane))
-            await schedule_reports()
-            for lane in queues:
-                await lane.put(None)
+        deadline = config.start_at + config.duration + DRAIN_SECONDS - time.time()
+        try:
+            async with asyncio.timeout(deadline), asyncio.TaskGroup() as group:
+                for lane in queues:
+                    group.create_task(stream(lane))
+                await schedule_reports()
+                for lane in queues:
+                    await lane.put(None)
+        except TimeoutError:
+            raise LaneLost(f"lanes not drained {DRAIN_SECONDS} s after the schedule") from None
     else:
         connector = aiohttp.TCPConnector(limit=config.concurrency)
         timeout = aiohttp.ClientTimeout(total=10)

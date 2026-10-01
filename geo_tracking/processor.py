@@ -27,7 +27,7 @@ from geo_tracking.metrics import (
     monitor_loop,
 )
 from geo_tracking.settings import Settings
-from geo_tracking.spatial import Record, advance, match_records, persist_latest, persisted, stored
+from geo_tracking.spatial import Record, advance, match_records, persist_latest, persisted
 from geo_tracking.tiles import position_subject
 
 logger = logging.getLogger(__name__)
@@ -70,13 +70,15 @@ class Processor:
                     (replayed if item.offset <= limit else live).append(orjson.loads(item.value))
             seen: set[tuple[str, int]] = set()
             replayed, live = self.unique(replayed, seen), self.unique(live, seen)
-            known = await stored(session, list({record[0] for record in live}))
+            advanced = await persist_latest(session, live)
             fresh = [
-                record for record in live if record[0] not in known or record[3] > known[record[0]]
+                record
+                for record in live
+                if record[0] in advanced
+                and (advanced[record[0]] is None or record[3] > advanced[record[0]])
             ]
             emitted = replayed + fresh
             matches = await match_records(session, emitted) if emitted else []
-            await persist_latest(session, fresh)
             await advance(
                 session,
                 topic,

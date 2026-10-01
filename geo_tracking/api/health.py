@@ -21,16 +21,6 @@ async def live() -> dict:
     return {"status": "alive"}
 
 
-@router.get("/health/ready")
-async def ready(services: ServicesDep) -> dict:
-    try:
-        async with asyncio.timeout(1):
-            await services.ingest.producer.client.fetch_all_metadata()
-    except Exception:
-        raise HTTPException(503, "broker_unavailable") from None
-    return {"status": "ready"}
-
-
 @router.get("/metrics", include_in_schema=False)
 async def metrics() -> Response:
     body, content_type = exposition("api")

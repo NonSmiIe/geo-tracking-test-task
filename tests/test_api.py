@@ -125,7 +125,6 @@ def samples(text: str) -> dict[tuple[str, tuple], float]:
 
 def test_health_and_prometheus_exposition_on_every_role(stack, http: httpx.Client) -> None:
     assert http.get("/health/live").json() == {"status": "alive"}
-    assert http.get("/health/ready").json() == {"status": "ready"}
     accepted = ("fleet_ingest_reports_total", (("outcome", "accepted"), ("transport", "http")))
     before = samples(http.get("/metrics").text).get(accepted, 0)
     batch = [report(offset=1), report(offset=2)]

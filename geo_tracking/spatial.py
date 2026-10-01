@@ -5,11 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 Record = tuple[str, float, float, int]
 
-WATERMARK_SQL = text("""
-SELECT device_id, (extract(epoch FROM reported_at) * 1000000)::bigint
-FROM device_latest WHERE device_id = ANY(CAST(:device_ids AS text[]))
-""")
-
 PROGRESS_SQL = text("""
 SELECT partition, persisted FROM consumer_progress WHERE topic = :topic
 """)
@@ -48,12 +43,8 @@ FROM unnest(CAST(:device_ids AS text[]), CAST(:longitudes AS float8[]),
 ON CONFLICT (device_id) DO UPDATE
 SET position = excluded.position, reported_at = excluded.reported_at
 WHERE device.reported_at < excluded.reported_at
+RETURNING device.device_id, (extract(epoch FROM old.reported_at) * 1000000)::bigint
 """)
-
-
-async def stored(session: AsyncSession, device_ids: Sequence[str]) -> dict[str, int]:
-    result = await session.execute(WATERMARK_SQL, {"device_ids": list(device_ids)})
-    return dict(result.tuples().all())
 
 
 async def persisted(session: AsyncSession, topic: str) -> dict[int, int]:
@@ -79,20 +70,22 @@ async def match_records(session: AsyncSession, records: Sequence[Record]) -> Seq
     return result.mappings().all()
 
 
-async def persist_latest(session: AsyncSession, records: Sequence[Record]) -> None:
+async def persist_latest(session: AsyncSession, records: Sequence[Record]) -> dict[str, int | None]:
     latest: dict[str, Record] = {}
     for record in records:
         previous = latest.get(record[0])
         if previous is None or record[3] > previous[3]:
             latest[record[0]] = record
-    if latest:
-        values = list(latest.values())
-        await session.execute(
-            UPSERT_SQL,
-            {
-                "device_ids": [record[0] for record in values],
-                "longitudes": [record[2] for record in values],
-                "latitudes": [record[1] for record in values],
-                "reported_us": [record[3] for record in values],
-            },
-        )
+    if not latest:
+        return {}
+    values = list(latest.values())
+    result = await session.execute(
+        UPSERT_SQL,
+        {
+            "device_ids": [record[0] for record in values],
+            "longitudes": [record[2] for record in values],
+            "latitudes": [record[1] for record in values],
+            "reported_us": [record[3] for record in values],
+        },
+    )
+    return dict(result.tuples().all())

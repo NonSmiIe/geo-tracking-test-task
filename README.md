@@ -57,9 +57,8 @@ dashboards ◀─────────── WS /ws ────────�
 **One owner per device, without one process.** Keying by `device_id` puts every report of a device on one partition, and the consumer group gives each partition exactly one processor. That ownership removes the watermark race a shared processor pool would have, and Kafka moves partitions to the survivors when a processor dies. Each processor polls up to 2,000 records and, in one transaction:
 
 1. discards equal `(device_id, timestamp)` duplicates, first wins;
-2. reads the persisted watermark of each device and drops samples at or before it (stale);
-3. matches **every** remaining fresh sample against active zones in one set-based PostGIS query, so a device that passes through a zone inside one batch still alerts;
-4. upserts only each device's newest position, guarded by `WHERE reported_at < excluded.reported_at` so a zombie owner during a rebalance can never move a device backwards.
+2. upserts each device's newest position, guarded by `WHERE reported_at < excluded.reported_at` so a zombie owner during a rebalance can never move a device backwards. `RETURNING old.reported_at` (PostgreSQL 18) hands back the watermark the row had, so one statement both persists and tells which samples are fresh: those newer than that watermark, on rows the guard let through. Everything else is stale;
+3. matches **every** fresh sample against active zones in one set-based PostGIS query, so a device that passes through a zone inside one batch still alerts.
 
 After commit the processor publishes to NATS, flushes, and only then commits the Kafka offsets. On a database error it seeks back to the batch's first offsets and retries; nothing is acknowledged and lost. If NATS is unavailable after a commit, the processor keeps flushing for up to 30 s before committing offsets, then exits so that a restarted owner replays the batch. The same transaction records the highest persisted offset per partition, so a replay knows which records were committed but perhaps never published and re-emits every one of them, including each sample of a device that crossed a zone inside the batch. A crash between commit and publish, or a connection lost right after COMMIT, therefore loses no live event. A client resend lands above that offset and is discarded as stale, identical or not. Delivery is at least once: replays never change stored state, but a rebalance can repeat a live frame.
 
@@ -96,7 +95,7 @@ After commit the processor publishes to NATS, flushes, and only then commits the
 | `GET /insights` | Fleet freshness and live occupancy of this user's zones |
 | `WS /ws?user_id=` | `ready` → client `viewport` → `subscribed`, then `positions`, `inside_report`, `zones_changed` |
 | `GET/POST /demo`, `/demo/start`, `/demo/stop` | Guided demo for the current user; its state lives in PostgreSQL, so any replica can answer |
-| `/health/live`, `/health/ready` | Liveness; api readiness checks only the Kafka broker (ingest keeps running through a database outage). Gateway readiness equals liveness, because its NATS client reconnects by itself and draining dashboards would make a blip an outage. Processors serve `/health/live` on port 9100 and report `stalled` once Kafka has not been polled for the publish deadline plus 10 s |
+| `/health/live` | The only health signal, used by compose and the edge. There is no readiness that depends on Kafka, PostgreSQL or NATS. A dependency outage is answered per request (`503`, or a socket close) and raised by alerts. Taking replicas out of rotation for it only turns a partial outage into a total one: at 300k devices a Kafka-probing readiness check timed out on every saturated replica, and the edge had no api server left. Processors serve `/health/live` on port 9100 and report `stalled` once Kafka has not been polled for the publish deadline plus 10 s |
 | `/metrics` | Prometheus exposition, per process: api and gateway on their port, processors on 9100. Not routed by the edge; Prometheus scrapes each replica |
 | `GET /stats` | Fleet-wide freshness p95, ingest rate and consumer lag, read from Prometheus for the dashboard |
 

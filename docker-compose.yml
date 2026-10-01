@@ -29,7 +29,7 @@ services:
       POSTGRES_USER: geo
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-demo-password}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: [CMD-SHELL, "pg_isready -U geo -d geo"]
       interval: 2s
@@ -108,7 +108,7 @@ services:
       nats:
         condition: service_healthy
     healthcheck: &health
-      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3)"]
       interval: 5s
       timeout: 4s
       retries: 20
