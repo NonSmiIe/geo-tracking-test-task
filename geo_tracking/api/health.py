@@ -18,13 +18,16 @@ async def live() -> dict:
 
 @router.get("/health/ready")
 async def ready(services: ServicesDep) -> dict:
-    if not services.nats.is_connected:
-        raise HTTPException(503, "nats_unavailable")
     try:
         async with asyncio.timeout(1):
             await services.ingest.producer.client.fetch_all_metadata()
     except Exception:
         raise HTTPException(503, "broker_unavailable") from None
+    return {"status": "ready"}
+
+
+@router.get("/health/database")
+async def database(services: ServicesDep) -> dict:
     try:
         async with asyncio.timeout(1), services.db.sessions() as session:
             await session.execute(text("SELECT 1"))

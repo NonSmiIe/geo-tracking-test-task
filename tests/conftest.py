@@ -12,6 +12,7 @@ from sqlalchemy.engine import make_url
 
 from geo_tracking.api.app import create_app
 from geo_tracking.db import Database
+from geo_tracking.gateway_app import create_gateway_app
 from geo_tracking.processor import serve
 from geo_tracking.settings import Settings
 
@@ -24,7 +25,6 @@ def settings() -> Settings:
         kafka_group=f"processors-{token}",
         kafka_partitions=4,
         subject_prefix=f"test-{token}",
-        api_workers=1,
         processor_poll_ms=20,
         ack_interval_seconds=0.05,
         processor_retry_seconds=0.2,
@@ -82,31 +82,42 @@ class Worker:
         self.thread.join(15)
 
 
-class Stack:
-    def __init__(self, settings: Settings):
-        self.settings = settings
-        port = free_port()
-        self.url = f"http://127.0.0.1:{port}"
-        self.ws_url = f"ws://127.0.0.1:{port}"
+class Server:
+    def __init__(self, app: object):
+        self.port = free_port()
         self.server = uvicorn.Server(
             uvicorn.Config(
-                create_app(settings),
-                host="127.0.0.1",
-                port=port,
-                log_level="warning",
-                ws_max_size=4096,
+                app, host="127.0.0.1", port=self.port, log_level="warning", ws_max_size=4096
             )
         )
         self.thread = threading.Thread(target=self.server.run, daemon=True)
-        self.processor: Worker | None = None
 
-    def __enter__(self) -> "Stack":
+    def start(self) -> None:
         self.thread.start()
         for _ in range(300):
             if self.server.started:
-                break
+                return
             threading.Event().wait(0.05)
-        assert self.server.started, "API server did not start"
+        raise AssertionError("server did not start")
+
+    def stop(self) -> None:
+        self.server.should_exit = True
+        self.thread.join(15)
+
+
+class Stack:
+    def __init__(self, settings: Settings):
+        self.settings = settings
+        self.api = Server(create_app(settings))
+        self.gateway = Server(create_gateway_app(settings))
+        self.url = f"http://127.0.0.1:{self.api.port}"
+        self.ingest_url = f"ws://127.0.0.1:{self.api.port}/ingest"
+        self.ws_url = f"ws://127.0.0.1:{self.gateway.port}"
+        self.processor: Worker | None = None
+
+    def __enter__(self) -> "Stack":
+        self.api.start()
+        self.gateway.start()
         self.processor = Worker(self.settings).start()
         return self
 
@@ -116,8 +127,8 @@ class Stack:
 
     def __exit__(self, *exc: object) -> None:
         self.processor.stop()
-        self.server.should_exit = True
-        self.thread.join(15)
+        self.gateway.stop()
+        self.api.stop()
 
 
 @pytest.fixture

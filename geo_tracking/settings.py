@@ -12,12 +12,12 @@ class Settings(BaseSettings):
     kafka_bootstrap: str = "localhost:9092"
     kafka_topic: str = "reports"
     kafka_partitions: int = Field(default=24, ge=1)
+    kafka_replication: int = Field(default=1, ge=1)
     kafka_group: str = "processors"
 
-    nats_url: str = "nats://localhost:4222"
+    nats_servers: str = "nats://localhost:4222"
     subject_prefix: str = Field(default="fleet", pattern=r"^[a-z0-9-]+$")
 
-    api_workers: int = Field(default=4, ge=1)
     body_bytes: int = Field(default=262144, ge=1024)
     batch_reports: int = Field(default=200, ge=1, le=1000)
     produce_window: int = Field(default=8192, ge=1)

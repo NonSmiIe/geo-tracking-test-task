@@ -9,9 +9,10 @@ x-app: &app
   environment: &env
     GEO_DATABASE_URL: postgresql+asyncpg://geo:${POSTGRES_PASSWORD:-local-demo-password}@db:5432/geo
     GEO_KAFKA_BOOTSTRAP: kafka:9092
-    GEO_NATS_URL: nats://nats:4222
+    GEO_NATS_SERVERS: nats://nats:4222
 services:
   db:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: Dockerfile.postgis
@@ -30,6 +31,7 @@ services:
     mem_limit: 1536m
     cpus: 3
   kafka:
+    restart: unless-stopped
     image: apache/kafka:4.1.0
     environment:
       KAFKA_NODE_ID: 1
@@ -58,6 +60,7 @@ services:
     mem_limit: 1536m
     cpus: 2
   nats:
+    restart: unless-stopped
     image: nats:2.11.9-alpine
     command: [-m, "8222"]
     healthcheck:
@@ -73,10 +76,24 @@ services:
     depends_on:
       db:
         condition: service_healthy
-  api:
-    <<: *app
+  edge:
+    image: haproxy:3.2-alpine
+    volumes:
+      - ./edge/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     ports:
       - "127.0.0.1:${APP_PORT:-8097}:8000"
+    depends_on:
+      api:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 2
+  api:
+    restart: unless-stopped
+    <<: *app
+    command: &serve [uvicorn, geo_tracking.api.app:app, --host, 0.0.0.0, --port, "8000", --no-access-log, --ws-max-size, "4096", --timeout-graceful-shutdown, "15"]
     depends_on: &ready
       migrate:
         condition: service_completed_successfully
@@ -84,14 +101,29 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
-    healthcheck:
+    healthcheck: &health
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
       interval: 5s
       timeout: 4s
       retries: 20
-    mem_limit: 1536m
-    cpus: 4
+    deploy:
+      replicas: ${API_REPLICAS:-4}
+    mem_limit: 320m
+    cpus: 1
+  gateway:
+    restart: unless-stopped
+    <<: *app
+    command: [uvicorn, geo_tracking.gateway_app:app, --host, 0.0.0.0, --port, "8000", --no-access-log, --ws-max-size, "4096", --timeout-graceful-shutdown, "15"]
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck: *health
+    deploy:
+      replicas: ${GATEWAYS:-2}
+    mem_limit: 320m
+    cpus: 1
   processor:
+    restart: unless-stopped
     <<: *app
     command: [python, -m, geo_tracking.processor]
     depends_on: *ready

@@ -115,7 +115,7 @@ def test_viewport_limits_positions_and_follows_retargeting(stack, http) -> None:
 
 def test_device_websocket_acknowledges_every_report_and_rejects_invalid(stack, http) -> None:
     observer = dashboard(stack, "alice")
-    with connect(f"{stack.ws_url}/ingest") as device:
+    with connect(stack.ingest_url) as device:
         for index in range(50):
             device.send(orjson.dumps(report(f"stream-{index}", offset=1)).decode())
         device.send('{"type":"flush"}')
@@ -126,7 +126,7 @@ def test_device_websocket_acknowledges_every_report_and_rejects_invalid(stack, h
             acks = message["count"]
         assert acks == 50
     assert len(collect(observer, "positions", 50)) == 50
-    with connect(f"{stack.ws_url}/ingest") as device:
+    with connect(stack.ingest_url) as device:
         device.send(orjson.dumps(report(latitude=100)).decode())
         with pytest.raises(ConnectionClosed) as closed:
             device.recv(timeout=5)

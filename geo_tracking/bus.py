@@ -26,7 +26,9 @@ class Subjects:
 
 
 async def connect_nats(settings: Settings) -> Client:
-    return await nats.connect(settings.nats_url, max_reconnect_attempts=-1, reconnect_time_wait=0.5)
+    return await nats.connect(
+        servers=settings.nats_servers.split(","), max_reconnect_attempts=-1, reconnect_time_wait=0.5
+    )
 
 
 def kafka_producer(settings: Settings) -> AIOKafkaProducer:
@@ -46,7 +48,11 @@ async def ensure_topic(settings: Settings) -> None:
     try:
         if settings.kafka_topic not in await admin.list_topics():
             await admin.create_topics(
-                [NewTopic(settings.kafka_topic, settings.kafka_partitions, 1)]
+                [
+                    NewTopic(
+                        settings.kafka_topic, settings.kafka_partitions, settings.kafka_replication
+                    )
+                ]
             )
     except TopicAlreadyExistsError:
         pass

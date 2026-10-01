@@ -40,8 +40,8 @@ def assess_pipeline(acked: int, baseline: dict, final: dict) -> dict:
     committed = total(final, "processor", "reports_committed") - total(
         baseline, "processor", "reports_committed"
     )
-    evicted = total(final, "api", "slow_connections_closed") - total(
-        baseline, "api", "slow_connections_closed"
+    evicted = total(final, "gateway", "slow_connections_closed") - total(
+        baseline, "gateway", "slow_connections_closed"
     )
     failed = total(final, "processor", "batches_failed") - total(
         baseline, "processor", "batches_failed"

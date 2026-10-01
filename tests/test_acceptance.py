@@ -40,7 +40,7 @@ def test_pipeline_requires_exact_commits_drained_lag_and_no_evictions() -> None:
         return {
             "roles": {
                 "processor": {"reports_committed": committed, "consumer_lag": lag},
-                "api": {"slow_connections_closed": evicted},
+                "gateway": {"slow_connections_closed": evicted},
             }
         }
 

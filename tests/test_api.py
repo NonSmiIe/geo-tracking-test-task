@@ -105,6 +105,7 @@ def test_report_validation_and_bounded_body(http: httpx.Client) -> None:
         report(latitude=100),
         report(timestamp="2026-01-01T00:00:00"),
         report(user_id="alice"),
+        report(timestamp="2999-01-01T00:00:00+00:00"),
     ):
         assert http.post("/locations", json=payload).status_code == 422
     assert http.post("/locations/batch", json=[]).status_code == 422
@@ -117,4 +118,8 @@ def test_health_and_aggregated_metrics(http: httpx.Client) -> None:
     assert http.get("/health/live").json() == {"status": "alive"}
     assert http.get("/health/ready").json() == {"status": "ready"}
     roles = http.get("/metrics").json()["roles"]
-    assert roles["api"]["instances"] == 1 and roles["processor"]["instances"] == 1
+    assert {role: roles[role]["instances"] for role in ("api", "gateway", "processor")} == {
+        "api": 1,
+        "gateway": 1,
+        "processor": 1,
+    }

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
@@ -9,6 +9,7 @@ Radius = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 Identifier = Annotated[str, Field(min_length=1, max_length=96, pattern=r"^[\w.-]+$")]
 
 EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+CLOCK_SKEW = timedelta(minutes=5)
 
 
 def microseconds(value: datetime) -> int:
@@ -28,7 +29,10 @@ class Report(BaseModel):
     def utc_timestamp(cls, value: datetime) -> datetime:
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("timestamp requires a timezone")
-        return value.astimezone(UTC)
+        value = value.astimezone(UTC)
+        if value > datetime.now(UTC) + CLOCK_SKEW:
+            raise ValueError("timestamp is in the future")
+        return value
 
     def record(self) -> list:
         return [self.device_id, self.latitude, self.longitude, microseconds(self.timestamp)]

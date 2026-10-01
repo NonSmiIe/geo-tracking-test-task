@@ -10,7 +10,6 @@ from starlette.requests import HTTPConnection
 from geo_tracking.bus import Subjects
 from geo_tracking.db import Database
 from geo_tracking.demo import Demo
-from geo_tracking.gateway import Gateway
 from geo_tracking.ingest import Ingest
 from geo_tracking.metrics import Metrics
 from geo_tracking.schemas import Identifier
@@ -27,7 +26,6 @@ class Services:
     subjects: Subjects
     metrics: Metrics
     ingest: Ingest
-    gateway: Gateway
     demo: Demo
 
 

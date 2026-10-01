@@ -8,12 +8,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from geo_tracking.api import dashboard, devices, geozones, health, locations
+from geo_tracking.api import demo, devices, geozones, health, locations
 from geo_tracking.api.services import Services, zones_changed
 from geo_tracking.bus import Subjects, connect_nats, ensure_topic, kafka_producer, serve_metrics
 from geo_tracking.db import DATABASE_ERRORS, Database
 from geo_tracking.demo import Demo
-from geo_tracking.gateway import Gateway
 from geo_tracking.ingest import Ingest
 from geo_tracking.metrics import Metrics, monitor_loop
 from geo_tracking.schemas import Report
@@ -48,7 +47,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             subjects=subjects,
             metrics=metrics,
             ingest=ingest,
-            gateway=Gateway(settings, nats, metrics),
             demo=Demo(settings, db, ingest, partial(zones_changed, nats, subjects)),
         )
         app.state.services = services
@@ -57,7 +55,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
-            services.gateway.close()
             await services.demo.close()
             monitor.cancel()
             await asyncio.gather(monitor, return_exceptions=True)
@@ -69,7 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Fleetline", lifespan=lifespan)
     for error_type in DATABASE_ERRORS:
         app.add_exception_handler(error_type, database_unavailable)
-    for module in (locations, geozones, devices, dashboard, health):
+    for module in (locations, geozones, devices, demo, health):
         app.include_router(module.router)
 
     original = app.openapi
