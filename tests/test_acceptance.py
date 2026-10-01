@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+import orjson
+
 from scripts.acceptance import assess_fault_run, assess_pipeline, assess_resources, assess_workload
 
 
@@ -81,6 +83,7 @@ def test_fault_runs_judge_durability_and_resumption_not_counters() -> None:
         }
 
     assert assess_fault_run(workload, pipeline, [session(0, False, True, False)])["passed"]
+    orjson.dumps(assess_fault_run(workload, pipeline, [session(0, True, False, True)]))
     assert assess_fault_run(workload, pipeline, [session(0, True, False, True)])["passed"]
     assert not assess_fault_run(workload, pipeline, [session(0, True, False, False)])["passed"]
     assert not assess_fault_run(workload, pipeline, [session(0, False, False, False)])["passed"]

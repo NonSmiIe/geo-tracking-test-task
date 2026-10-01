@@ -92,9 +92,9 @@ def assess_fault_run(workload: dict, pipeline: dict, delivery: list[dict]) -> di
     sessions = {}
     for session in delivery:
         if session["closures_at_seconds"]:
-            sessions[session["session"]] = bool(session["received_after_last_closure"])
+            sessions[str(session["session"])] = bool(session["received_after_last_closure"])
         else:
-            sessions[session["session"]] = all(
+            sessions[str(session["session"])] = all(
                 passed for kind, passed in session["checks"].items() if kind != "not_closed"
             )
     checks = {
