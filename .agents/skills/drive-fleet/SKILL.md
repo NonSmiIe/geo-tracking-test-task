@@ -5,6 +5,12 @@ description: Prove a change to this fleet-tracking service works end to end — 
 
 Run from the repository root (the directory with `docker-compose.yml`). The app is `http://127.0.0.1:8097`.
 
+## Topology
+
+- The `edge` (HAProxy) is the only published port. It sends `/ws` to `gateway` replicas and everything else to `api` replicas, both by `leastconn`.
+- Scale with `API_REPLICAS=6 GATEWAYS=3 PROCESSORS=8 docker compose up -d --wait`. More processors than Kafka partitions (24) sit idle.
+- `/metrics` gathers every process over NATS. `roles.api`, `roles.gateway` and `roles.processor` hold the sums; `instances` holds each process.
+
 ## Pick the smallest check that covers the change
 
 | Changed | Check |
@@ -16,6 +22,7 @@ Run from the repository root (the directory with `docker-compose.yml`). The app 
 - `drive.py` creates and deletes its own zone and device. It checks two owner sessions plus another user, and prints the API and processor instance counts and the consumer lag. It never resets data.
 - The suite must pass whole. Every test gets its own Kafka topic, consumer group and NATS prefix, and the suite refuses any database other than `geo_test`.
 - Never rebuild or restart the stack while a benchmark runs, and never run two benchmarks at once.
+- **Is the generator the limit?** `uv run python scripts/ack_sink.py` in one shell, then `uv run python generator.py --url http://127.0.0.1:8099 --devices N --duration 60 --processes 8`. If the sink run cannot sustain the rate, the generator is the bottleneck, not the service. 400k devices (80k/s) is known good.
 
 ## Reading a benchmark
 
