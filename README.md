@@ -26,7 +26,7 @@ Open **http://127.0.0.1:8097**; API documentation is at **/docs**. Compose start
 | `gateway` | FastAPI, one process per replica (`GATEWAYS`, default 2): dashboard WebSockets |
 | `processor` | Kafka consumer group (`PROCESSORS`, default 8 replicas): dedup, PostGIS matching, persistence, fanout |
 
-Three ports are published, all on `127.0.0.1` only: the edge (`8097`), Prometheus (`9097`) and Grafana (`3097`). Application containers run as a non-root user with a read-only root filesystem, no Linux capabilities, `no-new-privileges`, and memory and CPU limits. Credentials come from `.env`. Stop with `docker compose stop`.
+Three ports are published, all on `127.0.0.1` only: the edge (`8097`), Prometheus (`9097`) and Grafana (`3097`). Grafana has no login at all: it serves the provisioned dashboard to an anonymous viewer, and dashboards change only through `ops/grafana`. Services connect to PostgreSQL as `fleet_app` (DML on the app schema, no superuser) and the exporter as `fleet_monitor` (`pg_monitor`); only migrations use the owner role. NATS requires a token, and every container, third-party ones included, runs with `no-new-privileges`. Application containers run as a non-root user with a read-only root filesystem, no Linux capabilities, `no-new-privileges`, and memory and CPU limits. Credentials come from `.env`. Stop with `docker compose stop`.
 
 For the generator, benchmark and tooling, install [uv](https://docs.astral.sh/uv/) and run `uv sync --frozen` (Python 3.12+).
 
@@ -113,18 +113,19 @@ Frames:
 
 | Bound | Default |
 | --- | --- |
-| HTTP request body | 256 KiB |
+| HTTP request body, every route | 256 KiB (one ASGI limit; `413` before the handler sees a byte past it) |
 | HTTP batch | 200 reports |
 | In-flight produces per api process (HTTP and sockets) | 8,192 |
 | In-flight produces per device socket | 1,024 |
 | Processor poll | 2,000 records / 50 ms |
 | Database pool | 5 per api process, 4 per processor, no overflow, 1 s checkout |
 | Statement timeout | 2 s |
-| Zones per user | 1,000 |
-| Dashboard sessions per gateway | 128 |
+| Zones per user | 1,000; radius ≤ 500 km; a zone may overlap at most 50 of its owner's active zones, so a report matches at most 51 zones per user |
+| Dashboard sessions | 128 per gateway, 8 per user per gateway, 16 per user at the edge |
 | Connections per replica at the edge | 4,096 (queued beyond) |
-| Per-session queue / send deadline | 8 MiB / 2 s |
-| Viewport subscriptions | 16 tiles per session |
+| Per-session queue / send deadline | 8 MiB / 2 s; 128 MiB queued per gateway in total, beyond which the largest backlog is evicted |
+| Viewport subscriptions | 16 tiles per session, at most 4 viewport changes per second, 4 KiB per gateway frame |
+| Requests per user at the edge | 600 per 10 s (`429` beyond); request headers within 10 s, keep-alive 5 s |
 | Alert frame | 1,000 items |
 
 All are `GEO_`-prefixed settings in `geo_tracking/settings.py`.
@@ -228,6 +229,8 @@ Each scenario runs 100,000 devices for 180 s and breaks one container about 60 s
 No scenario lost an acknowledged report. Re-emitted events are the replay of batches committed but not yet offset-committed, so delivery is at least once.
 
 ## Limits
+
+- **Ingestion is unauthenticated.** Any client that reaches `/ingest` or `/locations` can report any `device_id`, so positions and alerts are only as trustworthy as the network in front of the edge. A real deployment needs per-device credentials (mTLS or a signed token bound to `device_id`), a device-to-owner table, and a check of each report's `device_id` against the credential. What is in place limits the damage: a timestamp ahead of the server is recorded at receive time, so a spoofed future report cannot freeze a device; zones cap radius and overlap; the edge rate-limits per user; gateways cap dashboards per user and bytes per replica.
 
 - One Kafka broker, one PostgreSQL and one NATS server: the Compose file demonstrates scale-out of api, gateway and processors, not broker or database replication (see [Scaling out](#scaling-out)).
 - At-least-once delivery: a processor rebalance can repeat a live frame or alert.

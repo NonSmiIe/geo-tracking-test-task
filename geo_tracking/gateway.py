@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections import deque
 from collections.abc import Awaitable, Callable
+from time import monotonic
 from uuid import uuid4
 
 import orjson
@@ -31,9 +32,15 @@ RESYNC = b'{"type":"resync"}'
 logger = logging.getLogger(__name__)
 
 
+class Budget:
+    def __init__(self) -> None:
+        self.used = 0
+
+
 class Connection:
-    def __init__(self, user_id: str, socket: WebSocket, settings: Settings):
+    def __init__(self, user_id: str, socket: WebSocket, settings: Settings, budget: Budget):
         self.id = uuid4().hex
+        self.budget = budget
         self.user_id = user_id
         self.socket = socket
         self.settings = settings
@@ -51,11 +58,15 @@ class Connection:
             return False
         self.queue.append(data)
         self.queued_bytes += len(data)
+        self.budget.used += len(data)
         self.wake.set()
         return True
 
     def stop(self, reason: str) -> None:
         self.reason = reason
+        self.budget.used -= self.queued_bytes
+        self.queued_bytes = 0
+        self.queue.clear()
         if self.writer:
             self.writer.cancel()
 
@@ -69,6 +80,7 @@ class Connection:
                 )
                 self.queue.popleft()
                 self.queued_bytes -= len(data)
+                self.budget.used -= len(data)
             self.wake.clear()
 
 
@@ -79,6 +91,7 @@ class Gateway:
         self.routes: dict[str, set[Connection]] = {}
         self.subscriptions: dict[str, Subscription] = {}
         self.connections: dict[str, Connection] = {}
+        self.budget = Budget()
         self.opening = 0
         self.lock = asyncio.Lock()
         CONNECTIONS.set_function(lambda: len(self.connections))
@@ -109,6 +122,15 @@ class Gateway:
                 FRAME_BYTES.inc(len(data))
             else:
                 self.evict(connection, "backlog_overflow")
+        if self.budget.used > self.settings.gateway_queue_bytes:
+            backlog = sorted(self.connections.values(), key=lambda c: c.queued_bytes, reverse=True)
+            for connection in backlog:
+                if (
+                    self.budget.used <= self.settings.gateway_queue_bytes
+                    or not connection.queued_bytes
+                ):
+                    break
+                self.evict(connection, "gateway_budget")
 
     def evict(self, connection: Connection, reason: str) -> None:
         if connection.reason is None:
@@ -135,7 +157,9 @@ class Gateway:
                 if subject not in self.routes:
                     self.routes[subject] = set()
                     self.subscriptions[subject] = await self.nats.subscribe(
-                        subject, cb=self.handler(subject), pending_bytes_limit=268435456
+                        subject,
+                        cb=self.handler(subject),
+                        pending_bytes_limit=self.settings.nats_pending_bytes,
                     )
                 self.routes[subject].add(connection)
             connection.subjects = set(subjects)
@@ -161,8 +185,13 @@ class Gateway:
         )
 
     async def read(self, connection: Connection) -> None:
+        applied = 0.0
         while True:
             raw = await connection.socket.receive_text()
+            wait = applied + self.settings.viewport_interval_seconds - monotonic()
+            if wait > 0:
+                await asyncio.sleep(wait)
+            applied = monotonic()
             try:
                 subjects = self.viewport(connection, raw)
             except ValidationError:
@@ -175,7 +204,13 @@ class Gateway:
         if len(self.connections) + self.opening >= self.settings.max_connections:
             await socket.close(code=1013, reason="session_capacity")
             return
-        connection = Connection(user_id, socket, self.settings)
+        if (
+            sum(c.user_id == user_id for c in self.connections.values())
+            >= self.settings.max_sessions_per_user
+        ):
+            await socket.close(code=1013, reason="user_session_capacity")
+            return
+        connection = Connection(user_id, socket, self.settings, self.budget)
         self.opening += 1
         try:
             await asyncio.wait_for(socket.accept(), self.settings.send_timeout_seconds)

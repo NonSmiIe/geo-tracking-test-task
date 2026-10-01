@@ -32,7 +32,8 @@ class Report(msgspec.Struct, forbid_unknown_fields=True, frozen=True):
             raise ValueError("timestamp is in the future")
 
     def record(self) -> list[Any]:
-        return [self.device_id, self.latitude, self.longitude, microseconds(self.timestamp)]
+        stamp = min(self.timestamp, datetime.now(UTC))
+        return [self.device_id, self.latitude, self.longitude, microseconds(stamp)]
 
 
 class Flush(msgspec.Struct, tag_field="type", tag="flush", forbid_unknown_fields=True):

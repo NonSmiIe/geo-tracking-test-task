@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from geo_tracking.api import demo, devices, geozones, health, locations
+from geo_tracking.api.limits import BodyLimit
 from geo_tracking.api.services import Services, zones_changed
 from geo_tracking.bus import Producer, Subjects, connect_nats, ensure_topic
 from geo_tracking.db import DATABASE_ERRORS, Database
@@ -70,6 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await db.close()
 
     app = FastAPI(title="Fleetline", lifespan=lifespan)
+    app.add_middleware(BodyLimit, limit=settings.body_bytes)
     for error_type in DATABASE_ERRORS:
         app.add_exception_handler(error_type, database_unavailable)
     for module in (locations, geozones, devices, demo, health):

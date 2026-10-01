@@ -1,4 +1,5 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import orjson
@@ -231,3 +232,11 @@ def test_a_joining_processor_takes_partitions_without_losing_a_report(stack, htt
         second.stop()
     assert wait_for(lambda: all(latest(http, f"split-{i}") for i in (0, 50, 99)))
     socket.close()
+
+
+def test_a_report_from_the_near_future_is_recorded_at_receive_time(stack, http) -> None:
+    ahead = (datetime.now(UTC) + timedelta(minutes=3)).isoformat()
+    assert http.post("/locations", json=report("ahead", timestamp=ahead)).status_code == 202
+    assert wait_for(lambda: latest(http, "ahead") is not None)
+    stored = datetime.fromisoformat(latest(http, "ahead")["timestamp"])
+    assert stored <= datetime.now(UTC) + timedelta(seconds=1)

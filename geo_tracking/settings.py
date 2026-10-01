@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     max_connections: int = Field(default=128, ge=1)
     viewport_tiles: int = Field(default=16, ge=1)
     websocket_queue_bytes: int = Field(default=8388608, ge=1024)
+    gateway_queue_bytes: int = Field(default=134217728, ge=1024)
+    nats_pending_bytes: int = Field(default=33554432, ge=1024)
+    max_sessions_per_user: int = Field(default=8, ge=1)
+    viewport_interval_seconds: float = Field(default=0.25, ge=0)
     send_timeout_seconds: float = Field(default=2, gt=0)
     metrics_port: int = Field(default=9100, ge=0)
     prometheus_url: str = "http://prometheus:9090"

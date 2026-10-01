@@ -12,15 +12,6 @@ router = APIRouter(tags=["locations"])
 REPORT_SCHEMA = {"$ref": "#/components/schemas/Report"}
 
 
-async def bounded_body(request: Request, limit: int) -> bytes:
-    body = bytearray()
-    async for chunk in request.stream():
-        body.extend(chunk)
-        if len(body) > limit:
-            raise HTTPException(413, "body_capacity")
-    return bytes(body)
-
-
 async def publish(services: Services, reports: list[Report]) -> dict[str, Any]:
     try:
         await services.ingest.publish(reports)
@@ -44,7 +35,7 @@ def parse(decoder: msgspec.json.Decoder[Any], body: bytes) -> Any:
     openapi_extra={"requestBody": {"content": {"application/json": {"schema": REPORT_SCHEMA}}}},
 )
 async def location(request: Request, services: ServicesDep) -> dict[str, Any]:
-    body = await bounded_body(request, services.settings.body_bytes)
+    body = await request.body()
     return await publish(services, [parse(REPORT, body)])
 
 
@@ -58,7 +49,7 @@ async def location(request: Request, services: ServicesDep) -> dict[str, Any]:
     },
 )
 async def batch(request: Request, services: ServicesDep) -> dict[str, Any]:
-    body = await bounded_body(request, services.settings.body_bytes)
+    body = await request.body()
     return await publish(services, parse(batch_decoder(services.settings.batch_reports), body))
 
 

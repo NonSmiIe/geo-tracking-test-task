@@ -113,6 +113,14 @@ def test_report_validation_and_bounded_body(http: httpx.Client) -> None:
     assert http.post("/locations/batch", json=[]).status_code == 422
     assert http.post("/locations/batch", json=[report()] * 201).status_code == 422
     assert http.post("/locations", content=b"x" * 300000).status_code == 413
+    headers = {"X-User-ID": "alice", "Content-Type": "application/json"}
+    assert http.post("/geozones", content=b" " * 300000, headers=headers).status_code == 413
+
+    def chunks():
+        for _ in range(40):
+            yield b" " * 10000
+
+    assert http.post("/geozones", content=chunks(), headers=headers).status_code == 413
     assert http.post("/locations", json=report()).json() == {"accepted": 1}
 
 

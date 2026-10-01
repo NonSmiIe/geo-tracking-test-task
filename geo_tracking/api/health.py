@@ -1,5 +1,6 @@
 import asyncio
 import math
+from time import monotonic
 from typing import Any
 
 import aiohttp
@@ -28,8 +29,16 @@ async def metrics() -> Response:
     return Response(body, media_type=content_type)
 
 
+STATS_TTL_SECONDS = 5
+cached: tuple[float, dict[str, float | None]] = (0.0, {})
+
+
 @router.get("/stats")
-async def stats(services: ServicesDep) -> dict[str, Any]:
+async def stats(services: ServicesDep) -> dict[str, float | None]:
+    global cached
+    if monotonic() - cached[0] < STATS_TTL_SECONDS:
+        return cached[1]
+
     async def value(expression: str) -> float | None:
         async with services.prometheus.get(
             "/api/v1/query", params={"query": expression}
@@ -43,4 +52,5 @@ async def stats(services: ServicesDep) -> dict[str, Any]:
         values = await asyncio.gather(*map(value, STATS.values()))
     except (aiohttp.ClientError, TimeoutError):
         raise HTTPException(503, "prometheus_unavailable") from None
-    return dict(zip(STATS, values, strict=True))
+    cached = (monotonic(), dict(zip(STATS, values, strict=True)))
+    return cached[1]

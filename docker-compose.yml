@@ -5,18 +5,19 @@ x-app: &app
   tmpfs:
     - /tmp
   cap_drop: [ALL]
-  security_opt: [no-new-privileges:true]
+  security_opt: &hardened [no-new-privileges:true]
   init: true
   stop_grace_period: 45s
   mem_limit: 256m
   cpus: 1
   environment: &env
-    GEO_DATABASE_URL: postgresql+asyncpg://geo:${POSTGRES_PASSWORD:-local-demo-password}@db:5432/geo
+    GEO_DATABASE_URL: postgresql+asyncpg://fleet_app:${APP_DATABASE_PASSWORD:-local-demo-password}@db:5432/geo
     GEO_KAFKA_BOOTSTRAP: kafka:9092
-    GEO_NATS_SERVERS: nats://nats:4222
+    GEO_NATS_SERVERS: nats://${NATS_TOKEN:-local-demo-token}@nats:4222
     PROMETHEUS_DISABLE_CREATED_SERIES: "true"
 services:
   db:
+    security_opt: *hardened
     restart: unless-stopped
     build:
       context: .
@@ -38,6 +39,7 @@ services:
     mem_limit: 1536m
     cpus: 3
   kafka:
+    security_opt: *hardened
     restart: unless-stopped
     image: apache/kafka:4.1.0
     environment:
@@ -69,9 +71,10 @@ services:
     mem_limit: 1536m
     cpus: 2
   nats:
+    security_opt: *hardened
     restart: unless-stopped
     image: nats:2.11.9-alpine
-    command: [-m, "8222"]
+    command: [-m, "8222", --auth, "${NATS_TOKEN:-local-demo-token}"]
     healthcheck:
       test: [CMD, wget, -qO-, http://localhost:8222/healthz]
       interval: 2s
@@ -82,10 +85,15 @@ services:
   migrate:
     <<: *app
     entrypoint: [alembic, upgrade, head]
+    environment:
+      <<: *env
+      GEO_DATABASE_URL: postgresql+asyncpg://geo:${POSTGRES_PASSWORD:-local-demo-password}@db:5432/geo
+      FLEET_APP_PASSWORD: ${APP_DATABASE_PASSWORD:-local-demo-password}
     depends_on:
       db:
         condition: service_healthy
   edge:
+    security_opt: *hardened
     image: haproxy:3.2-alpine
     volumes:
       - ./edge/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
@@ -121,7 +129,7 @@ services:
   gateway:
     restart: unless-stopped
     <<: *app
-    command: [geo_tracking.gateway_app:app]
+    command: [--ws-max-size, "4096", geo_tracking.gateway_app:app]
     depends_on:
       nats:
         condition: service_healthy
@@ -143,6 +151,7 @@ services:
     mem_limit: 384m
     cpus: 1
   prometheus:
+    security_opt: *hardened
     image: prom/prometheus:v3.5.0
     restart: unless-stopped
     command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.retention.time=2d]
@@ -154,12 +163,14 @@ services:
     mem_limit: 768m
     cpus: 1
   grafana:
+    security_opt: *hardened
     image: grafana/grafana:12.1.1
     restart: unless-stopped
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-local-demo-password}
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_AUTH_BASIC_ENABLED: "false"
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/fleetline.json
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
@@ -172,6 +183,7 @@ services:
     mem_limit: 256m
     cpus: 1
   kafka-exporter:
+    security_opt: *hardened
     image: danielqsj/kafka-exporter:v1.9.0
     restart: unless-stopped
     command: [--kafka.server=kafka:9092]
@@ -181,19 +193,21 @@ services:
     mem_limit: 128m
     cpus: 0.5
   postgres-exporter:
+    security_opt: *hardened
     image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
     restart: unless-stopped
     command: [--collector.stat_statements]
     environment:
       DATA_SOURCE_URI: db:5432/geo?sslmode=disable
-      DATA_SOURCE_USER: geo
-      DATA_SOURCE_PASS: ${POSTGRES_PASSWORD:-local-demo-password}
+      DATA_SOURCE_USER: fleet_monitor
+      DATA_SOURCE_PASS: ${APP_DATABASE_PASSWORD:-local-demo-password}
     depends_on:
       migrate:
         condition: service_completed_successfully
     mem_limit: 128m
     cpus: 0.5
   nats-exporter:
+    security_opt: *hardened
     image: natsio/prometheus-nats-exporter:0.17.3
     restart: unless-stopped
     command: [-varz, -connz, -subz, http://nats:8222]

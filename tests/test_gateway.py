@@ -1,6 +1,6 @@
 import asyncio
 
-from geo_tracking.gateway import RESYNC, Connection, Gateway
+from geo_tracking.gateway import RESYNC, Budget, Connection, Gateway
 from geo_tracking.metrics import GATEWAY
 from geo_tracking.settings import Settings
 
@@ -26,8 +26,8 @@ async def test_stalled_writer_times_out_without_blocking_its_sibling() -> None:
     settings = Settings(send_timeout_seconds=0.02)
     hub = gateway(settings)
     slow, fast = (
-        Connection("alice", Socket(True), settings),
-        Connection("alice", Socket(), settings),
+        Connection("alice", Socket(True), settings, Budget()),
+        Connection("alice", Socket(), settings, Budget()),
     )
     hub.routes["fleet.alerts.x"] = {slow, fast}
     slow.writer = asyncio.create_task(slow.write())
@@ -47,13 +47,16 @@ async def test_stalled_writer_times_out_without_blocking_its_sibling() -> None:
 async def test_backlog_overflow_evicts_only_the_full_connection() -> None:
     settings = Settings(websocket_queue_bytes=1024)
     hub = gateway(settings)
-    full, healthy = Connection("alice", Socket(), settings), Connection("alice", Socket(), settings)
+    full, healthy = (
+        Connection("alice", Socket(), settings, Budget()),
+        Connection("alice", Socket(), settings, Budget()),
+    )
     labels = {"reason": "backlog_overflow"}
     before = GATEWAY.get_sample_value("fleet_gateway_evictions_total", labels) or 0
     full.enqueue(b"x" * 1000)
     hub.routes["fleet.pos.0"] = {full, healthy}
     hub.deliver("fleet.pos.0", b"y" * 100)
-    assert full.reason == "backlog_overflow" and list(full.queue) == [b"x" * 1000]
+    assert full.reason == "backlog_overflow" and not full.queue and full.queued_bytes == 0
     assert healthy.reason is None and list(healthy.queue) == [b"y" * 100]
     assert GATEWAY.get_sample_value("fleet_gateway_evictions_total", labels) == before + 1
 
@@ -61,7 +64,10 @@ async def test_backlog_overflow_evicts_only_the_full_connection() -> None:
 async def test_resync_reaches_every_open_dashboard() -> None:
     settings = Settings()
     hub = gateway(settings)
-    first, second = Connection("alice", Socket(), settings), Connection("bob", Socket(), settings)
+    first, second = (
+        Connection("alice", Socket(), settings, Budget()),
+        Connection("bob", Socket(), settings, Budget()),
+    )
     hub.connections = {"a": first, "b": second}
     await hub.resync()
     assert list(first.queue) == [RESYNC] and list(second.queue) == [RESYNC]
@@ -70,8 +76,23 @@ async def test_resync_reaches_every_open_dashboard() -> None:
 async def test_a_dropped_subscription_resyncs_only_its_dashboards() -> None:
     settings = Settings()
     hub = gateway(settings)
-    routed, other = Connection("alice", Socket(), settings), Connection("bob", Socket(), settings)
+    routed, other = (
+        Connection("alice", Socket(), settings, Budget()),
+        Connection("bob", Socket(), settings, Budget()),
+    )
     hub.connections = {"a": routed, "b": other}
     hub.routes["fleet.pos.0"] = {routed}
     await hub.dropped("fleet.pos.0")
     assert list(routed.queue) == [RESYNC] and not other.queue
+
+
+async def test_the_gateway_budget_evicts_the_largest_backlog_first() -> None:
+    settings = Settings(gateway_queue_bytes=3000)
+    hub = gateway(settings)
+    big, small = (Connection(user, Socket(), settings, hub.budget) for user in ("alice", "bob"))
+    hub.connections = {"a": big, "b": small}
+    big.enqueue(b"x" * 2500)
+    hub.routes["fleet.pos.0"] = {big, small}
+    hub.deliver("fleet.pos.0", b"y" * 400)
+    assert big.reason == "gateway_budget" and small.reason is None
+    assert hub.budget.used == 400 == small.queued_bytes
