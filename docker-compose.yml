@@ -6,6 +6,8 @@ x-app: &app
     - /tmp
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
+  mem_limit: 256m
+  cpus: 1
   environment: &env
     GEO_DATABASE_URL: postgresql+asyncpg://geo:${POSTGRES_PASSWORD:-local-demo-password}@db:5432/geo
     GEO_KAFKA_BOOTSTRAP: kafka:9092
@@ -72,7 +74,7 @@ services:
     cpus: 1
   migrate:
     <<: *app
-    command: [alembic, upgrade, head]
+    entrypoint: [alembic, upgrade, head]
     depends_on:
       db:
         condition: service_healthy
@@ -93,7 +95,6 @@ services:
   api:
     restart: unless-stopped
     <<: *app
-    command: &serve [uvicorn, geo_tracking.api.app:app, --host, 0.0.0.0, --port, "8000", --no-access-log, --ws-max-size, "4096", --timeout-graceful-shutdown, "15"]
     depends_on: &ready
       migrate:
         condition: service_completed_successfully
@@ -113,7 +114,7 @@ services:
   gateway:
     restart: unless-stopped
     <<: *app
-    command: [uvicorn, geo_tracking.gateway_app:app, --host, 0.0.0.0, --port, "8000", --no-access-log, --ws-max-size, "4096", --timeout-graceful-shutdown, "15"]
+    command: [geo_tracking.gateway_app:app]
     depends_on:
       nats:
         condition: service_healthy
@@ -125,7 +126,7 @@ services:
   processor:
     restart: unless-stopped
     <<: *app
-    command: [python, -m, geo_tracking.processor]
+    entrypoint: [python, -m, geo_tracking.processor]
     depends_on: *ready
     deploy:
       replicas: ${PROCESSORS:-4}

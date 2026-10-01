@@ -1,11 +1,9 @@
 import asyncio
 
 from fastapi import APIRouter, HTTPException
-from sqlalchemy import text
 
 from geo_tracking.api.services import ServicesDep
 from geo_tracking.bus import gather_metrics
-from geo_tracking.db import DATABASE_ERRORS
 from geo_tracking.metrics import merge
 
 router = APIRouter(tags=["health"])
@@ -23,16 +21,6 @@ async def ready(services: ServicesDep) -> dict:
             await services.ingest.producer.client.fetch_all_metadata()
     except Exception:
         raise HTTPException(503, "broker_unavailable") from None
-    return {"status": "ready"}
-
-
-@router.get("/health/database")
-async def database(services: ServicesDep) -> dict:
-    try:
-        async with asyncio.timeout(1), services.db.sessions() as session:
-            await session.execute(text("SELECT 1"))
-    except (TimeoutError, *DATABASE_ERRORS):
-        raise HTTPException(503, "database_unavailable") from None
     return {"status": "ready"}
 
 

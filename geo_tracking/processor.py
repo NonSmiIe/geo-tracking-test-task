@@ -5,7 +5,9 @@ from time import monotonic
 
 import orjson
 from aiokafka import AIOKafkaConsumer, ConsumerRecord, TopicPartition
+from aiokafka.errors import CommitFailedError
 from nats.aio.client import Client
+from nats.errors import Error as NatsError
 
 from geo_tracking.bus import Subjects, connect_nats, ensure_topic, serve_metrics
 from geo_tracking.db import DATABASE_ERRORS, Database
@@ -73,15 +75,27 @@ class Processor:
                     "zone_version": match["zone_version"],
                 }
             )
-        for subject, items in positions.items():
-            await self.nats.publish(subject, frame("positions", items))
+        messages = [(subject, frame("positions", items)) for subject, items in positions.items()]
         size = self.settings.alert_frame_items
         for user_id, items in alerts.items():
             subject = self.subjects.alerts(user_id)
-            for start in range(0, len(items), size):
-                chunk = items[start : start + size]
-                await self.nats.publish(subject, frame("inside_report", chunk))
-        await self.nats.flush()
+            messages += [
+                (subject, frame("inside_report", items[start : start + size]))
+                for start in range(0, len(items), size)
+            ]
+        await self.publish(messages)
+
+    async def publish(self, messages: list[tuple[str, bytes]]) -> None:
+        while True:
+            try:
+                for subject, data in messages:
+                    await self.nats.publish(subject, data)
+                await self.nats.flush(timeout=2)
+                return
+            except (NatsError, TimeoutError):
+                logger.warning("NATS publish failed after commit; retrying the batch's events")
+                self.metrics.counts["publish_retries"] += 1
+                await asyncio.sleep(self.settings.processor_retry_seconds)
 
     async def run(self) -> None:
         while True:
@@ -106,7 +120,11 @@ class Processor:
             self.metrics.processing_ms.append((monotonic() - started) * 1000)
             self.metrics.counts["batches_committed"] += 1
             offsets = {partition: items[-1].offset + 1 for partition, items in batches.items()}
-            await self.consumer.commit(offsets)
+            try:
+                await self.consumer.commit(offsets)
+            except CommitFailedError:
+                logger.warning("Offset commit lost to a rebalance; the new owner replays as stale")
+                self.metrics.counts["commits_lost"] += 1
             await self.refresh_lag()
 
 

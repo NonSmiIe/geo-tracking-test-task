@@ -12,4 +12,5 @@ RUN useradd --uid 10001 --no-create-home app
 USER 10001
 ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 8000
-CMD ["uvicorn", "geo_tracking.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["uvicorn", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--ws-max-size", "4096", "--timeout-graceful-shutdown", "15"]
+CMD ["geo_tracking.api.app:app"]

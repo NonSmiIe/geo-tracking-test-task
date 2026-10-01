@@ -105,12 +105,36 @@ async def docker_stats(project: str) -> list[dict]:
     return [orjson.loads(row) for row in stdout.splitlines()]
 
 
+async def inject(faults: list[str], log: list[dict]) -> None:
+    started = time.monotonic()
+    for fault in sorted(faults, key=lambda item: float(item.split(":")[0])):
+        at, action, container = fault.split(":", 2)
+        await asyncio.sleep(max(0.0, float(at) - (time.monotonic() - started)))
+        process = await asyncio.create_subprocess_exec(
+            "docker",
+            action,
+            container,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        output, _ = await process.communicate()
+        log.append(
+            {
+                "at_seconds": round(time.monotonic() - started, 2),
+                "fault": fault,
+                "exit_code": process.returncode,
+                "output": output.decode().strip(),
+            }
+        )
+
+
 async def benchmark(args: argparse.Namespace) -> dict:
     prefix = f"bench-{uuid4().hex[:8]}"
     alice, bob = prefix + "-alice", prefix + "-bob"
     sessions = [(alice, WORLD), (alice, WORLD), (bob, WORLD), (bob, PROBE)]
     zones = []
     samples: list[dict] = []
+    faults: list[dict] = []
     async with aiohttp.ClientSession() as client:
         for index in range(args.zones):
             owner = alice if index == 0 else bob
@@ -154,6 +178,7 @@ async def benchmark(args: argparse.Namespace) -> dict:
                 ]
                 for ready in readies:
                     await loop.run_in_executor(None, ready.wait, 30)
+                injector = asyncio.create_task(inject(args.fault, faults))
                 generated = await run(
                     Config(
                         url=args.url,
@@ -169,6 +194,7 @@ async def benchmark(args: argparse.Namespace) -> dict:
                     ),
                     probes=[sorted(viewport_subjects("p", **PROBE, limit=16))],
                 )
+                await injector
                 for _ in range(120):
                     final = await metrics()
                     if final["roles"]["processor"].get("consumer_lag", 1) == 0:
@@ -238,6 +264,7 @@ async def benchmark(args: argparse.Namespace) -> dict:
             "probe_viewport": PROBE,
             "sessions": [{"user": user, "viewport": view} for user, view in sessions],
         },
+        "faults": faults,
         "workload": workload,
         "pipeline": pipeline,
         "delivery_reconciled": reconciled,
@@ -265,6 +292,12 @@ if __name__ == "__main__":
     parser.add_argument("--latitude", type=float, default=56.9496)
     parser.add_argument("--longitude", type=float, default=24.1052)
     parser.add_argument("--spread-km", type=float, default=150)
+    parser.add_argument(
+        "--fault",
+        action="append",
+        default=[],
+        help="SECONDS:docker-action:container, e.g. 60:kill:geo-tracking-test-task-processor-2",
+    )
     parser.add_argument("--output", type=Path, default=Path("evidence/baseline-100k.json"))
     args = parser.parse_args()
     result = asyncio.run(benchmark(args))

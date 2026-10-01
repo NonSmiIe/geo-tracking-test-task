@@ -1,6 +1,6 @@
 # Fleetline: real-time geo-tracking and private geozone alerts
 
-Fleetline is a FastAPI, async SQLAlchemy and PostgreSQL/PostGIS service that ingests positions from a moving fleet. It streams them to dashboards and pushes an alert to every open session of a user whenever one of that user's devices reports from inside one of their circular geozones. Every component that carries load scales horizontally. The measured envelope on one laptop is 100,000 devices reporting every five seconds (20,000 reports/s), reconciled report by report; see [Measured results](#measured-results).
+Fleetline is a FastAPI, async SQLAlchemy and PostgreSQL/PostGIS service that ingests positions from a moving fleet. It streams them to dashboards and pushes an alert to every open session of a user whenever one of that user's devices reports from inside one of their circular geozones. The api, the dashboard gateway and the processors scale out by adding replicas; Kafka, NATS and PostgreSQL run as single instances here (see [Scaling out](#scaling-out)). The measured envelope on one laptop is 100,000 devices reporting every five seconds (20,000 reports/s), verified by count and identity checksum on every session; see [Measured results](#measured-results).
 
 Design notes, with the brief, the reasoning behind each decision and the measurements: **https://claude.ai/artifact/5qGpLJVYQAY62WckcMui21**
 
@@ -21,10 +21,12 @@ Open **http://127.0.0.1:8097**; API documentation is at **/docs**. Compose start
 | `kafka` | Kafka 4.1 (KRaft, single broker), topic `reports` with 24 partitions |
 | `nats` | NATS 2.11 core, live event routing |
 | `migrate` | One-shot `alembic upgrade head` before anything serves traffic |
-| `api` | FastAPI on uvicorn, 4 worker processes: ingest, REST, dashboard WebSockets |
+| `edge` | HAProxy, the only published port: `/ws` to `gateway`, everything else to `api`, both `leastconn` |
+| `api` | FastAPI, one process per replica (`API_REPLICAS`, default 4): ingest, REST, demo |
+| `gateway` | FastAPI, one process per replica (`GATEWAYS`, default 2): dashboard WebSockets |
 | `processor` | Kafka consumer group (`PROCESSORS`, default 4 replicas): dedup, PostGIS matching, persistence, fanout |
 
-Only the API port is published, and only on `127.0.0.1`. Application containers run as a non-root user with a read-only root filesystem, no Linux capabilities, `no-new-privileges`, and memory and CPU limits. Credentials come from `.env`. Stop with `docker compose stop`.
+Only the edge port is published, and only on `127.0.0.1`. Application containers run as a non-root user with a read-only root filesystem, no Linux capabilities, `no-new-privileges`, and memory and CPU limits. Credentials come from `.env`. Stop with `docker compose stop`.
 
 For the generator, benchmark and tooling, install [uv](https://docs.astral.sh/uv/) and run `uv sync --frozen` (Python 3.12+).
 
@@ -43,15 +45,14 @@ Both Alice tabs receive alerts for every report from inside her zone. Bob sees t
 ## Architecture
 
 ```
-devices ──WS /ingest──┐
-        ──POST /locations┤  api workers ──produce(key=device_id)──▶ Kafka `reports` (24 partitions)
-                         │       ▲                                         │ consumer group
-dashboards ◀──WS /ws─────┘       │ NATS: fleet.pos.<quadkey>               ▼
-                                 │       fleet.alerts.<user>        processors ──▶ PostgreSQL/PostGIS
-                                 └───────fleet.zones.<user>  ◀──publish── (dedup, match, upsert)
+devices ── WS /ingest, POST /locations ─▶ edge ─▶ api ×N ──produce(key=device_id)──▶ Kafka `reports`
+                                                   │ zones.<user> (CRUD)                │ consumer group
+dashboards ◀─────────── WS /ws ─────────── edge ◀─ gateway ×M                           ▼
+                                                   ▲            processors ×P ──▶ PostgreSQL/PostGIS
+                                                   └── NATS ◀── pos.<quadkey>, alerts.<user> (after commit)
 ```
 
-**Ingestion is stateless and acknowledged by Kafka.** API workers validate each report and produce it to Kafka, keyed by `device_id`, with `acks=all` and an idempotent producer. A device WebSocket (`/ingest`) carries one JSON report per message and receives cumulative `{"type":"ack","count":n}` frames. A `{"type":"flush"}` message returns the final count once every in-flight report is durable. `POST /locations` and `POST /locations/batch` return `202` after the broker ack. Each producer has a bounded in-flight window. A full HTTP window answers `503` with `Retry-After`; a full socket window stops reading that socket, so TCP backpressure reaches the device. Nothing in the ingest path waits for the database.
+**Ingestion is stateless and acknowledged by Kafka.** api replicas validate each report and produce it to Kafka, keyed by `device_id`, with `acks=all` and an idempotent producer. A device WebSocket (`/ingest`) carries one JSON report per message and receives `{"type":"ack","count":n}` frames meaning the first `n` reports sent on that socket are durable, so a device that reconnects resends from report `n`. A `{"type":"flush"}` message returns the count once every in-flight report is durable. `POST /locations` and `POST /locations/batch` return `202` after the broker ack. Each api process has one bounded in-flight window shared by HTTP and sockets, and every socket has its own smaller window. A full window answers HTTP with `503` and `Retry-After`, and stops reading a socket, so TCP backpressure reaches the device. Nothing in the ingest path waits for the database.
 
 **One owner per device, without one process.** Keying by `device_id` puts every report of a device on one partition, and the consumer group gives each partition exactly one processor. That ownership removes the watermark race a shared processor pool would have, and Kafka moves partitions to the survivors when a processor dies. Each processor polls up to 2,000 records and, in one transaction:
 
@@ -60,21 +61,21 @@ dashboards ◀──WS /ws─────┘       │ NATS: fleet.pos.<quadkey>
 3. matches **every** remaining fresh sample against active zones in one set-based PostGIS query, so a device that passes through a zone inside one batch still alerts;
 4. upserts only each device's newest position, guarded by `WHERE reported_at < excluded.reported_at` so a zombie owner during a rebalance can never move a device backwards.
 
-After commit the processor publishes to NATS, flushes, and only then commits the Kafka offsets. On a database error it seeks back to the batch's first offsets and retries; nothing is acknowledged and lost. Delivery is at least once, and replays are idempotent because the watermarks discard already-committed samples.
+After commit the processor publishes to NATS, flushes, and only then commits the Kafka offsets. On a database error it seeks back to the batch's first offsets and retries; nothing is acknowledged and lost. If NATS is unavailable after a commit, the processor retries the publish before committing offsets, and a commit lost to a rebalance leaves the new owner to replay the batch as stale. Delivery is at least once: replays never change stored state, but a rebalance can repeat a live frame.
 
 **Spatial matching stays in PostGIS.** Zone centres are `geography(Point,4326)`, so radii are metres on the spheroid. Points are always built longitude first. Each zone also has a generated `footprint` column, produced by the IMMUTABLE SQL function `zone_footprint(center, radius_m)`. It is a lon/lat box that conservatively contains the geodesic circle: the angular radius uses the smallest meridional radius of curvature plus a 1% margin; the longitude extent is `asin(sin θ / cos φ)`; the box becomes two boxes across the antimeridian and spans all longitudes when the circle reaches a pole. A partial GiST index on active footprints selects candidates with `ST_Intersects`, and exact `ST_DWithin(center, point::geography, radius_m)` decides. There are no Python distance calculations and no per-zone queries. A test asserts on real PostGIS that this path returns exactly what brute-force `ST_DWithin` returns, across random zones, poles, the antimeridian, boundary-projected points and radii from 1e-100 m to 1e100 m.
 
-**Fanout is routed by NATS subjects, not by scanning.** Positions are published per Web-Mercator tile as `fleet.pos.<d1>.<d2>…<d8>`, a zoom-8 quadkey with one digit per token. Because quadkeys nest, a coarser tile is a subject prefix, so `fleet.pos.1.2.>` covers everything beneath it. A dashboard sends its viewport; the gateway picks the finest level whose tile cover has at most 16 tiles and subscribes to those subjects. Subscriptions are reference-counted across all of a worker's connections, so NATS only delivers what some local viewer needs. Alerts go to `fleet.alerts.<hex(user)>` and zone changes to `fleet.zones.<hex(user)>`; every gateway holding a session of that user subscribes, which is how all of a user's sessions get every alert whichever worker accepted them. Processors serialize each frame once and gateways forward the bytes without decoding.
+**Fanout is routed by NATS subjects, not by scanning.** Positions are published per Web-Mercator tile as `fleet.pos.<d1>.<d2>…<d8>`, a zoom-8 quadkey with one digit per token. Because quadkeys nest, a coarser tile is a subject prefix, so `fleet.pos.1.2.>` covers everything beneath it. A dashboard sends its viewport; the gateway picks the finest level whose tile cover has at most 16 tiles and subscribes to those subjects. Subscriptions are reference-counted across all of a gateway's connections, so NATS only delivers what some local viewer needs. Alerts go to `fleet.alerts.<hex(user)>` and zone changes to `fleet.zones.<hex(user)>`; every gateway holding a session of that user subscribes, which is how all of a user's sessions get every alert whichever gateway holds them. Processors serialize each frame once and gateways forward it without parsing the JSON.
 
-**WebSocket state.** Each worker keeps a `connection_id → Connection` registry plus `subject → connections` routes. A connection has one bounded byte queue and exactly one writer task, with a send deadline. Fanout only enqueues, so a slow socket never blocks others. A socket that overflows its queue or misses the deadline is closed alone with an explicit reason, and its siblings keep streaming. The browser opens its socket, sends its viewport, waits for `subscribed`, and only then loads the `/devices/latest` snapshot for that box. Snapshot and stream merge by microsecond timestamp, so a slow snapshot never overwrites a fresher position.
+**WebSocket state.** Each gateway keeps a `connection_id → Connection` registry plus `subject → connections` routes. A connection has one bounded byte queue and exactly one writer task, with a send deadline. Fanout only enqueues, so a slow socket never blocks others. A socket that overflows its queue or misses the deadline is closed alone with an explicit reason, and its siblings keep streaming. The browser opens its socket, sends its viewport, waits for `subscribed`, and only then loads the `/devices/latest` snapshot for that box. Snapshot and stream merge by microsecond timestamp, so a slow snapshot never overwrites a fresher position.
 
 **Why Kafka and NATS, and not Redis.** The ingest log needs durable partitions with exclusive, automatically rebalanced ownership; Kafka consumer groups are exactly that, and on Redis Streams it would have to be hand-built. The live path needs interest-based routing to the gateways that hold a viewer, and NATS subject wildcards do it inside the broker; Kafka would make every gateway read and decode the whole stream.
 
-**Database use.** Every process has one async engine with a bounded pool and a fixed checkout timeout (API workers 5, processors 2), plus a statement timeout. Sessions are short-lived and never belong to a WebSocket. Pool exhaustion or a database fault on REST returns `503`, while ingest keeps accepting into Kafka.
+**Database use.** Every process has one async engine with a bounded pool and a fixed checkout timeout (api replicas 5, processors 2), plus a statement timeout. Sessions are short-lived and never belong to a WebSocket. Pool exhaustion or a database fault on REST returns `503`, while ingest keeps accepting into Kafka.
 
 ## Semantics
 
-- A sample is identified by `(device_id, timestamp)`. Timestamps must carry a time zone and are normalized to UTC with microsecond precision. Device clocks are trusted.
+- A sample is identified by `(device_id, timestamp)`. Timestamps must carry a time zone and are normalized to UTC with microsecond precision. A timestamp more than 5 minutes in the future is rejected with `422`, so a bad clock can hold a device's watermark ahead by at most that much.
 - Every fresh sample inside an active zone produces an alert for that zone, including repeated reports from a device already inside.
 - An HTTP `202` or a socket ack means the report is durable in Kafka; it says nothing about browser delivery. Live events are ephemeral. A crash between a processor's commit and its publish loses those live events, since the replay finds the samples stale; reconnecting restores the latest map, not missed alerts.
 - Zone edits take effect from the next processed batch. An alert carries the `zone_version` it was evaluated against.
@@ -84,7 +85,7 @@ After commit the processor publishes to NATS, flushes, and only then commits the
 
 | Interface | Contract |
 | --- | --- |
-| `WS /ingest` | Device stream: one report per message, cumulative `ack` frames, `flush` for a final count |
+| `WS /ingest` | Device stream: one report per message; `ack` frames carry the durable prefix length; `flush` for a final count |
 | `POST /locations` | One `{device_id, latitude, longitude, timestamp}` → `202 {"accepted": 1}` |
 | `POST /locations/batch` | 1–200 reports → `202 {"accepted": n}` |
 | `GET/POST /geozones` | List (keyset pagination) or create this user's zones; quota per user |
@@ -92,9 +93,9 @@ After commit the processor publishes to NATS, flushes, and only then commits the
 | `GET /devices/latest` | Fleet snapshot; optional `south,west,north,east` box (antimeridian-aware), keyset pagination |
 | `GET /insights` | Fleet freshness and live occupancy of this user's zones |
 | `WS /ws?user_id=` | `ready` → client `viewport` → `subscribed`, then `positions`, `inside_report`, `zones_changed` |
-| `GET/POST /demo`, `/demo/start`, `/demo/stop` | Guided demo for the current user, shared across workers |
-| `/health/live`, `/health/ready` | Liveness; readiness checks NATS, the Kafka broker and PostgreSQL |
-| `/metrics` | Counters and distributions from every API worker and processor, gathered over NATS |
+| `GET/POST /demo`, `/demo/start`, `/demo/stop` | Guided demo for the current user; its state lives in PostgreSQL, so any replica can answer |
+| `/health/live`, `/health/ready` | Liveness; api readiness checks only the Kafka broker (ingest keeps running through a database outage), gateway readiness checks NATS |
+| `/metrics` | Counters and distributions from every api, gateway and processor process, gathered over NATS |
 
 Frames:
 
@@ -110,18 +111,32 @@ Frames:
 | --- | --- |
 | HTTP request body | 256 KiB |
 | HTTP batch | 200 reports |
-| In-flight produces per API worker | 8,192 |
+| In-flight produces per api process (HTTP and sockets) | 8,192 |
 | In-flight produces per device socket | 1,024 |
 | Processor poll | 2,000 records / 50 ms |
-| Database pool | 5 per API worker, 2 per processor, no overflow, 1 s checkout |
+| Database pool | 5 per api process, 2 per processor, no overflow, 1 s checkout |
 | Statement timeout | 2 s |
 | Zones per user | 1,000 |
-| Dashboard sessions per worker | 128 |
+| Dashboard sessions per gateway | 128 |
+| Connections per replica at the edge | 4,096 (queued beyond) |
 | Per-session queue / send deadline | 8 MiB / 2 s |
 | Viewport subscriptions | 16 tiles per session |
 | Alert frame | 1,000 items |
 
 All are `GEO_`-prefixed settings in `geo_tracking/settings.py`.
+
+## Scaling out
+
+| Tier | How it scales here | What a multi-host deployment adds |
+| --- | --- | --- |
+| api | `API_REPLICAS=N`, balanced by the edge | more edge capacity |
+| gateway | `GATEWAYS=N`; every gateway can hold any user's session, because alerts route over NATS | nothing new |
+| processor | `PROCESSORS=N`, up to the partition count (24); Kafka rebalances partitions | — |
+| Kafka | one broker; `GEO_KAFKA_REPLICATION` sets the topic's replication factor | 3+ brokers with replication 3 |
+| NATS | one server; `GEO_NATS_SERVERS` takes a comma-separated list | a NATS cluster |
+| PostgreSQL | one primary; the write tier that does not scale out yet | sharding `device_latest` by `device_id` (Citus), zones as a reference table |
+
+Changing the partition count of a live topic remaps devices to partitions and breaks the one-owner rule for the moving devices. Repartition by creating a new topic, switching producers to it, and switching processors once the old topic has drained.
 
 ## Load generator
 
@@ -145,19 +160,21 @@ The benchmark observes four dashboard sessions, each in its own process: two for
 
 ## Measured results
 
-Apple M4 Pro, Docker with 14 CPUs and 8 GB shared by the stack, the generator and unrelated containers. Every run uses 100 zones and four sessions; latency is measured from the scheduled report time.
+Apple M4 Pro; the Docker VM has 14 CPUs and 8 GB, shared with unrelated containers, and the generator and the observing clients run on the macOS host. Every run uses 100 zones and four dashboard WebSocket clients; latency is position delivery to those clients, measured from the scheduled report time (alert latency is within 3 ms of it in every run and is in each file). These runs predate the edge split: api ran as 4 uvicorn workers in one container.
 
-| Devices · duration | Reports/s | Acknowledged | Delivery p50 / p95 / p99 | API CPU | Processors | Verdict |
+| Devices · duration | Reports/s | Acknowledged | Position delivery p50 / p95 / p99 | API CPU | Processors | Verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | 25,000 · 300 s | 4,999 | 1,500,000 / 1,500,000 | 28 / 65 / 135 ms | 156% | 4 × 19% | [passed](evidence/scaling-25k.json) |
 | 50,000 · 300 s | 9,996 | 3,000,000 / 3,000,000 | 29 / 74 / 219 ms | 200% | 4 × 20% | [passed](evidence/scaling-50k.json) |
 | 100,000 · 300 s | 19,992 | 6,000,000 / 6,000,000 | 41 / 196 / 422 ms | 234% | 4 × 19% | [passed](evidence/scaling-100k.json) |
 | 100,000 · 900 s | 19,998 | 18,000,000 / 18,000,000 | 41 / 190 / 527 ms | 232% | 4 × 20% | [passed](evidence/baseline-100k.json) |
+| 150,000 · 300 s | 29,993 | 9,000,000 / 9,000,000 | 53 / 216 / 653 ms | 265% | 4 × 19% | [failed: Kafka memory growth 87 MiB > 64](evidence/capacity/rung-150k.json) |
 
 In every passed run all four sessions reconciled exactly, including the probe viewport, which received precisely the positions in its subscribed tiles. The earlier single-process design's 10,000-device runs remain in `evidence/` under [policy v2](evidence/acceptance-policy.md).
 
 ## Limits
 
-- One Kafka broker, one PostgreSQL and one NATS server: the Compose file demonstrates scale-out of the stateless tiers and processors, not broker or database replication.
+- One Kafka broker, one PostgreSQL and one NATS server: the Compose file demonstrates scale-out of api, gateway and processors, not broker or database replication (see [Scaling out](#scaling-out)).
+- At-least-once delivery: a processor rebalance can repeat a live frame or alert.
 - Dashboard positions are live tiles plus a snapshot. Alerts are not replayed after a disconnect, and there is no movement history.
 - Identity is mock identity, as the assignment allows.
