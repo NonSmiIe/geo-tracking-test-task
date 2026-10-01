@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from geo_tracking.admission import Admission
 from geo_tracking.assistant import Assistant, AssistantRequest, selected_center
 from geo_tracking.db import DATABASE_ERRORS, Database
+from geo_tracking.demo import Demo
 from geo_tracking.events import Frame
 from geo_tracking.insights import insights
 from geo_tracking.metrics import Metrics
@@ -55,6 +56,7 @@ def create_app(settings: Settings | None = None):
     pipeline = Pipeline(db, sessions, metrics, settings)
     assistant = Assistant(settings)
     crud_slots = asyncio.Semaphore(4)
+    demo = Demo(db, pipeline, crud_slots)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -65,6 +67,7 @@ def create_app(settings: Settings | None = None):
         try:
             yield
         finally:
+            await demo.close()
             await pipeline.stop()
             await sessions.close()
             await assistant.close()
@@ -79,6 +82,7 @@ def create_app(settings: Settings | None = None):
     app.state.db = db
     app.state.metrics = metrics
     app.state.assistant = assistant
+    app.state.demo = demo
 
     async def database_error(request, error):
         return JSONResponse(
@@ -106,6 +110,20 @@ def create_app(settings: Settings | None = None):
 
     async def zones_changed(user):
         await sessions.broadcast((), {user: (Frame(b'{"type":"zones_changed"}'),)})
+
+    @app.get("/demo")
+    async def demo_status(user: User):
+        return demo.status(user)
+
+    @app.post("/demo/start")
+    async def start_demo(user: User):
+        result = await demo.start(user)
+        await zones_changed(user)
+        return result
+
+    @app.post("/demo/stop")
+    async def stop_demo(user: User):
+        return await demo.stop(user)
 
     @app.post("/locations")
     async def location(report: Report):

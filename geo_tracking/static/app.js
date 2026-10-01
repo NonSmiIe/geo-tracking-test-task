@@ -7,6 +7,8 @@ let user = requestedUser && /^[\w.-]{1,96}$/.test(requestedUser) ? requestedUser
 let epoch = 0, socket, connectionVersion = 0, editId = null, selectedId = null, following = false;
 let currentView = 'fleet', zonesVisible = true, alertTotal = 0, unread = 0, received = 0, rateReceived = 0;
 let fleetDirty = true, alertsDirty = false, insightLoadId = 0, zoneLoadId = 0, snapshotController, errorTimer, proposal = null;
+let demoPrefix = null, demoRunning = false;
+const deviceName = (id) => demoPrefix && id.startsWith(demoPrefix) ? `Машина ${id.slice(demoPrefix.length)}` : id;
 const positions = new Map(), zones = new Map(), alertFeed = [], pendingPositions = new Map();
 const map = L.map('map', { preferCanvas: true, zoomControl: false, attributionControl: false }).setView([56.9496, 24.1052], 13);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -108,6 +110,7 @@ const FleetCanvas = L.Layer.extend({
 const fleetCanvas = new FleetCanvas().addTo(map);
 
 function queuePosition(item) {
+  if (demoPrefix && !item.device_id.startsWith(demoPrefix)) return;
   const key = timestampKey(item.timestamp), previous = pendingPositions.get(item.device_id) || positions.get(item.device_id);
   if (previous && previous.key >= key) return;
   pendingPositions.set(item.device_id, { ...item, key });
@@ -147,7 +150,7 @@ function renderFleet() {
     const button = element('button', undefined, `fleet-row${selectedId === item.device_id ? ' selected' : ''}`);
     button.type = 'button';
     const marker = element('span', undefined, 'fleet-icon'); marker.append(icon('fleet'));
-    const text = element('span'); text.append(element('strong', item.device_id), element('small', `${item.latitude.toFixed(4)}, ${item.longitude.toFixed(4)}`));
+    const text = element('span'); text.append(element('strong', deviceName(item.device_id)), element('small', `${item.latitude.toFixed(4)}, ${item.longitude.toFixed(4)}`));
     const when = element('span', age(item.timestamp), `fleet-age${now - Date.parse(item.timestamp) >= 60000 ? ' stale' : ''}`);
     button.append(marker, text, when); button.onclick = () => selectDevice(item.device_id);
     return button;
@@ -213,6 +216,7 @@ function switchView(view) {
 }
 document.querySelectorAll('[data-view]').forEach((button) => { button.onclick = () => switchView(button.dataset.view); });
 function receiveAlerts(items) {
+  if (demoPrefix) items = items.filter((item) => item.device_id.startsWith(demoPrefix));
   alertTotal += items.length;
   if (currentView !== 'activity') unread += items.length;
   alertFeed.unshift(...items.slice(-80).reverse()); alertFeed.length = Math.min(alertFeed.length, 80);
@@ -225,7 +229,7 @@ function renderAlerts() {
   alertsDirty = false;
   const rows = alertFeed.map((item) => {
     const row = element('div', undefined, 'alert-row'), symbol = element('span', undefined, 'alert-symbol'), content = element('div');
-    symbol.append(icon('zone')); content.append(element('strong', item.device_id), element('p', `Inside ${zones.get(item.zone_id)?.zone.name || 'geofence'} · version ${item.zone_version}`));
+    symbol.append(icon('zone')); content.append(element('strong', deviceName(item.device_id)), element('p', demoPrefix ? 'Машина сейчас внутри круга склада' : `Inside ${zones.get(item.zone_id)?.zone.name || 'geofence'} · version ${item.zone_version}`));
     const time = element('time', new Date(item.timestamp).toLocaleTimeString()); time.dateTime = item.timestamp; content.append(time); row.append(symbol, content); return row;
   });
   if (!rows.length) { const empty = element('div', undefined, 'empty-state'); empty.append(icon('activity'), element('h3', 'Nothing has crossed your radar yet'), element('p', 'Fresh reports inside your active geofences appear here, in every connected session.')); rows.push(empty); }
@@ -386,6 +390,7 @@ function setIdentity() {
 $('identity-toggle').onclick = () => { $('identity-panel').hidden = !$('identity-panel').hidden; if (!$('identity-panel').hidden) $('user').focus(); };
 $('identity').onsubmit = (event) => {
   event.preventDefault(); const next = $('user').value.trim(); if (!next || next === user) { $('identity-panel').hidden = true; return; }
+  demoPrefix = null; demoRunning = false; $('demo-all').hidden = true;
   user = next; epoch++; socket?.close(); snapshotController?.abort(); resetEdit();
   zoneLoadId++; alertTotal = 0; unread = 0; alertFeed.length = 0; pendingPositions.clear();
   $('alert-count').textContent = '0'; $('activity-badge').hidden = true; renderAlerts();
@@ -412,3 +417,47 @@ async function metrics() {
   try { const data = await api('/metrics'); $('latency').textContent = data.processing_ms.p95 === undefined ? 'Processing —' : `Processing p95 ${Math.round(data.processing_ms.p95)} ms`; } catch { $('latency').textContent = 'Processing unavailable'; }
 }
 setInterval(metrics, 5000); metrics(); setIdentity(); renderZones(); renderAlerts(); renderFleet(); connect(user, epoch); checkAssistant(epoch, user);
+
+function enterDemo(state) {
+  demoPrefix = state.device_prefix;
+  positions.clear(); pendingPositions.clear(); selectedId = null; following = false;
+  $('inspector').hidden = true; $('device-count').textContent = '0';
+  alertFeed.length = 0; alertTotal = 0; unread = 0; $('alert-count').textContent = '0';
+  $('activity-badge').hidden = true; $('fleet-search').value = ''; $('fleet-filter').value = 'all';
+  fleetDirty = true; renderAlerts(); fleetCanvas.redraw();
+  $('demo-all').hidden = false;
+  map.setView([state.latitude, state.longitude], 16);
+  switchView('activity');
+}
+function demoState(state) {
+  demoRunning = state.running;
+  $('demo-toggle').textContent = state.running ? '■ Остановить демо' : '▶ Запустить демо';
+  $('demo-status').textContent = state.running
+    ? 'Демо идёт: машины обновляются каждую секунду. Уведомления — в списке ниже. Автостоп через 2 минуты.'
+    : demoPrefix ? 'Демо остановлено. Машины замерли. Нажми запуск, чтобы повторить.' : 'Нажми кнопку — всё начнётся автоматически.';
+}
+$('demo-toggle').onclick = async () => {
+  const who = user, version = epoch;
+  $('demo-toggle').disabled = true;
+  try {
+    const state = await api(demoRunning ? '/demo/stop' : '/demo/start', {method: 'POST'}, who);
+    if (!current(version, who)) return;
+    if (state.running) { enterDemo(state); await loadZones(version, who); }
+    demoState(state);
+  } catch (cause) { if (current(version, who)) error(cause.message); }
+  finally { if (current(version, who)) $('demo-toggle').disabled = false; }
+};
+$('demo-all').onclick = () => {
+  demoPrefix = null; positions.clear(); pendingPositions.clear();
+  $('demo-all').hidden = true; $('device-count').textContent = '0'; fleetDirty = true;
+  switchView('fleet'); connect(user, epoch); refreshDemo();
+};
+async function refreshDemo() {
+  const who = user, version = epoch;
+  try {
+    const state = await api('/demo', {}, who);
+    if (!current(version, who)) return;
+    demoState(state);
+  } catch (cause) { if (current(version, who)) $('demo-status').textContent = 'Не удалось проверить демо. Попробуй кнопку запуска.'; }
+}
+setInterval(refreshDemo, 2000); refreshDemo();
