@@ -2,7 +2,17 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from geoalchemy2 import Geography, Geometry, WKBElement
-from sqlalchemy import Boolean, CheckConstraint, Computed, DateTime, Float, Index, Integer, String
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Computed,
+    DateTime,
+    Float,
+    Index,
+    Integer,
+    String,
+)
 from sqlalchemy import text as sql
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -50,3 +60,10 @@ class DemoRun(Base):
     __tablename__ = "demo_runs"
     user_id: Mapped[str] = mapped_column(String(96), primary_key=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ConsumerProgress(Base):
+    __tablename__ = "consumer_progress"
+    topic: Mapped[str] = mapped_column(String(249), primary_key=True)
+    partition: Mapped[int] = mapped_column(Integer, primary_key=True)
+    persisted: Mapped[int] = mapped_column(BigInteger)

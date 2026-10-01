@@ -22,6 +22,10 @@ from geo_tracking.tiles import position_subject
 EARTH_RADIUS = 6371008.8
 
 
+class LaneLost(Exception):
+    pass
+
+
 def fingerprint(device_id: str, timestamp_us: int) -> int:
     data = f"{device_id}|{timestamp_us}".encode()
     return int.from_bytes(hashlib.blake2b(data, digest_size=8).digest(), "big")
@@ -200,11 +204,12 @@ async def produce(config: Config, index: int, probes: list[list[str]]) -> Shard:
                         return
                     finally:
                         reader.cancel()
-            except (TimeoutError, websockets.ConnectionClosed, OSError):
+            except (TimeoutError, websockets.ConnectionClosed, OSError) as error:
                 shard.counters["reconnects"] += 1
                 if shard.counters["reconnects"] > 64 * config.connections:
-                    shard.counters["transport_errors"] += len(state.pending)
-                    return
+                    raise LaneLost(
+                        f"gave up after {shard.counters['reconnects']} reconnects"
+                    ) from error
                 await asyncio.sleep(0.5)
 
     async def post(lane: asyncio.Queue, client: aiohttp.ClientSession) -> None:
@@ -290,11 +295,12 @@ async def produce(config: Config, index: int, probes: list[list[str]]) -> Shard:
                 await asyncio.sleep(0)
 
     if config.transport == "ws":
-        senders = [asyncio.create_task(stream(lane)) for lane in queues]
-        await schedule_reports()
-        for lane in queues:
-            await lane.put(None)
-        await asyncio.gather(*senders)
+        async with asyncio.TaskGroup() as group:
+            for lane in queues:
+                group.create_task(stream(lane))
+            await schedule_reports()
+            for lane in queues:
+                await lane.put(None)
     else:
         connector = aiohttp.TCPConnector(limit=config.concurrency)
         timeout = aiohttp.ClientTimeout(total=10)

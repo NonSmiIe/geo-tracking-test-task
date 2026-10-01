@@ -14,7 +14,7 @@ from geo_tracking.bus import Subjects, connect_nats, ensure_topic, serve_metrics
 from geo_tracking.db import DATABASE_ERRORS, Database
 from geo_tracking.metrics import Metrics, monitor_loop
 from geo_tracking.settings import Settings
-from geo_tracking.spatial import Record, match_records, persist_latest, stored
+from geo_tracking.spatial import Record, advance, match_records, persist_latest, persisted, stored
 from geo_tracking.tiles import position_subject
 
 logger = logging.getLogger(__name__)
@@ -44,29 +44,43 @@ class Processor:
                 total += max(0, highwater - await self.consumer.position(partition))
         self.consumer_lag = total
 
-    async def process(self, records: list[Record]) -> None:
-        seen = set()
-        unique = []
+    def unique(self, records: list[Record], seen: set[tuple[str, int]]) -> list[Record]:
+        kept = []
         for record in records:
             key = record[0], record[3]
             if key in seen:
                 self.metrics.counts["duplicates"] += 1
                 continue
             seen.add(key)
-            unique.append(record)
+            kept.append(record)
+        return kept
+
+    async def process(self, batches: dict[TopicPartition, list[ConsumerRecord]]) -> None:
+        topic = self.settings.kafka_topic
         async with self.db.sessions() as session, session.begin():
-            known = await stored(session, list({record[0] for record in unique}))
+            done = await persisted(session, topic)
+            replayed: list[Record] = []
+            live: list[Record] = []
+            for partition, items in batches.items():
+                limit = done.get(partition.partition, -1)
+                for item in items:
+                    (replayed if item.offset <= limit else live).append(orjson.loads(item.value))
+            seen: set[tuple[str, int]] = set()
+            replayed, live = self.unique(replayed, seen), self.unique(live, seen)
+            known = await stored(session, list({record[0] for record in live}))
             fresh = [
-                record
-                for record in unique
-                if record[0] not in known or record[3] > known[record[0]][3]
+                record for record in live if record[0] not in known or record[3] > known[record[0]]
             ]
-            replayed = [record for record in unique if tuple(record) == known.get(record[0])]
-            emitted = fresh + replayed
+            emitted = replayed + fresh
             matches = await match_records(session, emitted) if emitted else []
             await persist_latest(session, fresh)
+            await advance(
+                session,
+                topic,
+                {partition.partition: items[-1].offset for partition, items in batches.items()},
+            )
         self.metrics.counts["replayed"] += len(replayed)
-        self.metrics.counts["stale"] += len(unique) - len(emitted)
+        self.metrics.counts["stale"] += len(live) - len(fresh)
         self.metrics.counts["reports_committed"] += len(fresh)
         self.metrics.counts["alerts_generated"] += len(matches)
         positions: dict[str, list] = defaultdict(list)
@@ -125,10 +139,9 @@ class Processor:
             if not batches:
                 await self.refresh_lag()
                 continue
-            records = [orjson.loads(item.value) for items in batches.values() for item in items]
             started = monotonic()
             try:
-                await self.process(records)
+                await self.process(batches)
             except DATABASE_ERRORS:
                 logger.exception("Batch processing failed; replaying from the first offset")
                 self.metrics.counts["batches_failed"] += 1

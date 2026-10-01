@@ -107,3 +107,20 @@ async def test_window_cancellation_returns_nothing_it_did_not_take() -> None:
     await asyncio.gather(waiting, return_exceptions=True)
     window.release(2)
     assert window.free == 2 and not window.waiters
+
+
+async def test_a_release_between_cancel_and_unwind_keeps_every_permit() -> None:
+    window = Window(2)
+    await window.acquire(2)
+    cancelled = asyncio.create_task(window.acquire(2))
+    await asyncio.sleep(0)
+    behind = asyncio.create_task(window.acquire(1))
+    await asyncio.sleep(0)
+    cancelled.cancel()
+    window.release(2)
+    results = await asyncio.gather(cancelled, behind, return_exceptions=True)
+    assert isinstance(results[0], asyncio.CancelledError) and results[1] is None
+    assert window.free == 1
+    window.release(1)
+    await window.acquire(2)
+    assert window.free == 0 and not window.waiters

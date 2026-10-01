@@ -8,6 +8,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
 from geo_tracking.db import Database
+from geo_tracking.processor import Processor, PublishStalled
 from tests.helpers import RIGA, collect, dashboard, look, micros, report, silent, wait_for, zone
 
 
@@ -50,16 +51,37 @@ def test_duplicates_and_stale_reports_change_nothing(stack, http) -> None:
     socket.close()
 
 
-def test_an_identical_replay_reemits_its_events_and_a_conflicting_one_does_not(stack, http) -> None:
+def test_a_resent_report_is_stale_whether_identical_or_conflicting(stack, http) -> None:
     zone(http)
     socket = dashboard(stack, "alice")
     http.post("/locations", json=report(offset=1))
     assert collect(socket, "inside_report", 1)[0]["timestamp"] == micros(1)
     http.post("/locations", json=report(offset=1))
-    assert collect(socket, "inside_report", 1)[0]["timestamp"] == micros(1)
     http.post("/locations", json=report(offset=1, longitude=24.1053))
     silent(socket, "inside_report")
     assert latest(http, "device-1")["longitude"] == 24.1052
+    socket.close()
+
+
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnhandledThreadExceptionWarning")
+def test_a_crash_between_commit_and_publish_replays_every_sample(stack, http, monkeypatch) -> None:
+    zone(http)
+    socket = dashboard(stack, "alice")
+    delivered = Processor.publish
+
+    async def stalled(self: Processor, messages: list) -> None:
+        raise PublishStalled
+
+    monkeypatch.setattr(Processor, "publish", stalled)
+    http.post("/locations/batch", json=[report(offset=1), report(offset=2, latitude=57.5)])
+    assert wait_for(lambda: (latest(http, "device-1") or {}).get("latitude") == 57.5)
+    silent(socket, "positions", 0.5)
+    monkeypatch.setattr(Processor, "publish", delivered)
+    stack.restart_processor()
+    assert [item[3] for item in collect(socket, "positions", 2)] == [micros(1), micros(2)]
+    assert [item["timestamp"] for item in collect(socket, "inside_report", 1)] == [micros(1)]
+    http.post("/locations", json=report(offset=2, latitude=57.5))
+    silent(socket, "positions", 0.5)
     socket.close()
 
 

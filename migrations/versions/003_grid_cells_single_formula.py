@@ -55,6 +55,27 @@ END
 $$
 """
 
+PREVIOUS_GRID_CELLS = """
+CREATE OR REPLACE FUNCTION grid_cells(area geometry) RETURNS integer[]
+LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $$
+WITH span AS (
+    SELECT floor((ST_YMin(area) + 90) * 4)::integer AS row_low,
+           least(719, floor((ST_YMax(area) + 90) * 4)::integer) AS row_high,
+           floor((ST_XMin(area) + 180) * 4)::integer AS col_low,
+           least(1439, floor((ST_XMax(area) + 180) * 4)::integer) AS col_high
+)
+SELECT CASE
+    WHEN (row_high - row_low + 1) * (col_high - col_low + 1) > 4096 THEN NULL
+    ELSE ARRAY(
+        SELECT grid_row * 1440 + grid_col
+        FROM generate_series(row_low, row_high) AS grid_row,
+             generate_series(col_low, col_high) AS grid_col
+    )
+END
+FROM span
+$$
+"""
+
 
 def upgrade():
     op.execute(GRID_CELLS)
@@ -63,3 +84,4 @@ def upgrade():
 
 def downgrade():
     op.execute("DROP FUNCTION zone_occupancy(geography, double precision, geometry, timestamptz)")
+    op.execute(PREVIOUS_GRID_CELLS)

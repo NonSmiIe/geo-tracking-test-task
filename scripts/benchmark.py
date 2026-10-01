@@ -30,7 +30,9 @@ def fault(value: str) -> str:
     return value
 
 
-def observe(url: str, user: str, viewport: dict, prefix: str, ready, stop) -> dict:
+def observe(url: str, user: str, viewport: dict, prefix: str, interval: float, ready, stop) -> dict:
+    period = interval * 1_000_000
+
     async def subscribe() -> websockets.ClientConnection:
         socket = await websockets.connect(
             url.replace("http", "ws", 1) + f"/ws?user_id={user}", max_size=None, max_queue=None
@@ -42,7 +44,8 @@ def observe(url: str, user: str, viewport: dict, prefix: str, ready, stop) -> di
         return socket
 
     async def main() -> dict:
-        counts, checksums = Counter(), Counter()
+        counts, checksums, duplicates = Counter(), Counter(), Counter()
+        seen: dict[str, dict[str, tuple[int, int]]] = {"positions": {}, "inside_report": {}}
         latency = {"positions": Histogram(), "inside_report": Histogram()}
         closures: list[float] = []
         socket = await subscribe()
@@ -57,11 +60,15 @@ def observe(url: str, user: str, viewport: dict, prefix: str, ready, stop) -> di
                 continue
             except websockets.ConnectionClosed:
                 closures.append(round(time.monotonic() - started, 2))
-                await asyncio.sleep(0.5)
-                try:
-                    socket = await subscribe()
-                except (OSError, websockets.WebSocketException):
-                    continue
+                while not stop.is_set():
+                    await asyncio.sleep(0.5)
+                    try:
+                        socket = await subscribe()
+                        break
+                    except (OSError, websockets.WebSocketException):
+                        continue
+                if stop.is_set():
+                    break
                 continue
             last = time.monotonic()
             message = orjson.loads(data)
@@ -77,12 +84,21 @@ def observe(url: str, user: str, viewport: dict, prefix: str, ready, stop) -> di
                     device, stamp = item["device_id"], item["timestamp"]
                 if not device.startswith(prefix):
                     continue
+                anchor, bits = seen[kind].get(device, (stamp, 0))
+                index = round((stamp - anchor) / period)
+                if index < 0:
+                    anchor, bits, index = stamp, bits << -index, 0
+                if bits >> index & 1:
+                    duplicates[kind] += 1
+                    continue
+                seen[kind][device] = anchor, bits | 1 << index
                 counts[kind] += 1
                 checksums[kind] = (checksums[kind] + fingerprint(device, stamp)) % (1 << 64)
                 histogram.add((now - stamp) / 1_000_000)
         await socket.close()
         return {
             "counts": dict(counts),
+            "duplicates": dict(duplicates),
             "closures_at_seconds": closures,
             "checksums": {key: str(value) for key, value in checksums.items()},
             "latency": {key: value.summary() for key, value in latency.items()},
@@ -219,7 +235,15 @@ async def benchmark(args: argparse.Namespace) -> dict:
             with ProcessPoolExecutor(len(sessions)) as pool:
                 watchers = [
                     loop.run_in_executor(
-                        pool, observe, args.url, user, view, prefix, readies[index], stop
+                        pool,
+                        observe,
+                        args.url,
+                        user,
+                        view,
+                        prefix,
+                        args.interval,
+                        readies[index],
+                        stop,
                     )
                     for index, (user, view) in enumerate(sessions)
                 ]

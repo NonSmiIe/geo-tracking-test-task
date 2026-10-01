@@ -57,13 +57,13 @@ class Window:
             return
         grant: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self.waiters.append((count, grant))
+        self.wake()
         try:
             await grant
         except BaseException:
             if grant.done() and not grant.cancelled():
                 self.release(count)
             else:
-                self.waiters.remove((count, grant))
                 self.wake()
             raise
 
@@ -72,8 +72,14 @@ class Window:
         self.wake()
 
     def wake(self) -> None:
-        while self.waiters and self.waiters[0][0] <= self.free:
-            count, grant = self.waiters.popleft()
+        while self.waiters:
+            count, grant = self.waiters[0]
+            if grant.done():
+                self.waiters.popleft()
+                continue
+            if count > self.free:
+                return
+            self.waiters.popleft()
             self.free -= count
             grant.set_result(None)
 

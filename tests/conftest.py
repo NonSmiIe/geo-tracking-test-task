@@ -40,7 +40,9 @@ def clean_database(settings: Settings) -> None:
         db = Database(settings)
         try:
             async with db.engine.begin() as connection:
-                await connection.execute(text("TRUNCATE geozones, device_latest, demo_runs"))
+                await connection.execute(
+                    text("TRUNCATE geozones, device_latest, demo_runs, consumer_progress")
+                )
         finally:
             await db.close()
 
@@ -79,7 +81,8 @@ class Worker:
         return self
 
     def stop(self) -> None:
-        self.loop.call_soon_threadsafe(self.stopping.set)
+        if self.thread.is_alive():
+            self.loop.call_soon_threadsafe(self.stopping.set)
         self.thread.join(15)
 
 

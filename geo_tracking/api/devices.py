@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from geoalchemy2 import Geometry
-from sqlalchemy import ColumnElement, and_, any_, cast, func, or_, select
+from sqlalchemy import ColumnElement, and_, any_, cast, func, or_, select, text
 
 from geo_tracking.api.services import Session, User
 from geo_tracking.insights import insights
@@ -65,6 +65,7 @@ async def latest(
         .limit(limit + 1)
     )
     if envelopes:
+        await session.execute(text("SET LOCAL plan_cache_mode = force_custom_plan"))
         query = query.where(area(envelopes))
     if after:
         query = query.where(DeviceLatest.device_id > after)

@@ -6,9 +6,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 Record = tuple[str, float, float, int]
 
 WATERMARK_SQL = text("""
-SELECT device_id, ST_Y(position), ST_X(position),
-       (extract(epoch FROM reported_at) * 1000000)::bigint
+SELECT device_id, (extract(epoch FROM reported_at) * 1000000)::bigint
 FROM device_latest WHERE device_id = ANY(CAST(:device_ids AS text[]))
+""")
+
+PROGRESS_SQL = text("""
+SELECT partition, persisted FROM consumer_progress WHERE topic = :topic
+""")
+
+ADVANCE_SQL = text("""
+INSERT INTO consumer_progress AS progress (topic, partition, persisted)
+SELECT :topic, partition, persisted
+FROM unnest(CAST(:partitions AS integer[]), CAST(:offsets AS bigint[]))
+     AS batch(partition, persisted)
+ON CONFLICT (topic, partition) DO UPDATE
+SET persisted = greatest(progress.persisted, excluded.persisted)
 """)
 
 MATCH_SQL = text("""
@@ -39,9 +51,21 @@ WHERE device.reported_at < excluded.reported_at
 """)
 
 
-async def stored(session: AsyncSession, device_ids: Sequence[str]) -> dict[str, Record]:
+async def stored(session: AsyncSession, device_ids: Sequence[str]) -> dict[str, int]:
     result = await session.execute(WATERMARK_SQL, {"device_ids": list(device_ids)})
-    return {row[0]: (row[0], row[1], row[2], row[3]) for row in result.tuples()}
+    return dict(result.tuples().all())
+
+
+async def persisted(session: AsyncSession, topic: str) -> dict[int, int]:
+    result = await session.execute(PROGRESS_SQL, {"topic": topic})
+    return dict(result.tuples().all())
+
+
+async def advance(session: AsyncSession, topic: str, offsets: dict[int, int]) -> None:
+    await session.execute(
+        ADVANCE_SQL,
+        {"topic": topic, "partitions": list(offsets), "offsets": list(offsets.values())},
+    )
 
 
 async def match_records(session: AsyncSession, records: Sequence[Record]) -> Sequence[RowMapping]:
