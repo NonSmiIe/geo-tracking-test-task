@@ -60,6 +60,7 @@ class Processor(ConsumerRebalanceListener):
         self.subjects = Subjects(settings.subject_prefix)
         self.polls: dict[TopicPartition, float] = {}
         self.lanes: dict[TopicPartition, asyncio.Task[None]] = {}
+        self.leaving: dict[TopicPartition, asyncio.Event] = {}
         self.transactions = asyncio.Semaphore(settings.processor_transactions)
 
     def unique(self, records: list[Record], seen: set[tuple[str, int]]) -> list[Record]:
@@ -157,6 +158,7 @@ class Processor(ConsumerRebalanceListener):
                 if lane.done():
                     del self.lanes[partition]
                     self.polls.pop(partition, None)
+                    self.leaving.pop(partition, None)
                     lane.result()
             await asyncio.sleep(0.1)
         await self.on_partitions_revoked(set(self.lanes))
@@ -167,6 +169,7 @@ class Processor(ConsumerRebalanceListener):
         )
         for partition in assigned - self.lanes.keys():
             self.polls[partition] = time()
+            self.leaving[partition] = asyncio.Event()
             self.lanes[partition] = asyncio.create_task(self.lane(partition))
 
     async def on_partitions_revoked(self, revoked: set[TopicPartition]) -> None:
@@ -175,13 +178,19 @@ class Processor(ConsumerRebalanceListener):
         )
         for partition in revoked:
             self.polls.pop(partition, None)
+            if partition in self.leaving:
+                self.leaving.pop(partition).set()
         leaving = [self.lanes.pop(partition) for partition in revoked if partition in self.lanes]
-        for lane in leaving:
+        if not leaving:
+            return
+        _, unfinished = await asyncio.wait(leaving, timeout=self.settings.publish_deadline_seconds)
+        for lane in unfinished:
             lane.cancel()
         await asyncio.gather(*leaving, return_exceptions=True)
 
     async def lane(self, partition: TopicPartition) -> None:
-        while True:
+        leaving = self.leaving[partition]
+        while not leaving.is_set():
             fetched = await self.consumer.getmany(
                 partition,
                 timeout_ms=self.settings.processor_poll_ms,
