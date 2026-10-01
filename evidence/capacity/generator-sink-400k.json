@@ -1,0 +1,43 @@
+{
+  "configuration": {
+    "url": "http://127.0.0.1:8099",
+    "devices": 400000,
+    "interval": 5,
+    "duration": 60.0,
+    "processes": 8,
+    "connections": 8,
+    "transport": "ws",
+    "concurrency": 64,
+    "batch_size": 1,
+    "queue_size": 8192,
+    "seed": 42,
+    "latitude": 56.9496,
+    "longitude": 24.1052,
+    "spread_km": 150,
+    "synchronized": false,
+    "prefix": "sink",
+    "start_at": 1790879469.734744
+  },
+  "counters": {
+    "expected_scheduled": 4800000,
+    "scheduled": 4800000,
+    "sent": 4800000,
+    "acked": 4800000,
+    "queue_high_water": 24
+  },
+  "elapsed_seconds": 60.05093789100647,
+  "acked_reports_per_second": 79932.14042238751,
+  "offered_reports_per_second": 80000.0,
+  "schedule_lag": {
+    "count": 4800000,
+    "max_ms": 13,
+    "p50_ms": 1,
+    "p95_ms": 1,
+    "p99_ms": 1
+  },
+  "http_latency": {
+    "count": 0
+  },
+  "checksum": "2094085363386882398",
+  "probes": []
+}
