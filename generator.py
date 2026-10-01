@@ -111,7 +111,7 @@ class Shard:
     schedule_lag: Histogram = field(default_factory=Histogram)
     latency: Histogram = field(default_factory=Histogram)
     checksum: int = 0
-    latest: dict[int, int] = field(default_factory=dict)
+    latest: dict[str, int] = field(default_factory=dict)
     probes: list[list[int]] = field(default_factory=list)
 
 
@@ -290,7 +290,7 @@ async def produce(config: Config, index: int, probes: list[list[str]]) -> Shard:
             except asyncio.QueueFull:
                 shard.counters["generator_dropped"] += 1
             else:
-                shard.latest[local] = timestamp
+                shard.latest[device_id] = timestamp
                 mark = fingerprint(device_id, timestamp)
                 shard.checksum = (shard.checksum + mark) % (1 << 64)
                 if probes:
@@ -340,6 +340,7 @@ def shard_main(config: Config, index: int, probes: list[list[str]]) -> dict:
         "checksum": shard.checksum,
         "latest_devices": len(shard.latest),
         "latest_sum": sum(shard.latest.values()),
+        "latest_by_device": shard.latest,
         "probes": shard.probes,
     }
 
@@ -357,6 +358,7 @@ async def run(config: Config, probes: list[list[str]] | None = None) -> dict:
         )
     counters, lag, latency, checksum = Counter(), Histogram(), Histogram(), 0
     latest_devices = latest_sum = 0
+    latest_by_device: dict[str, int] = {}
     totals = [[0, 0] for _ in probes]
     for shard in shards:
         high = shard["counters"].pop("queue_high_water", 0)
@@ -367,6 +369,7 @@ async def run(config: Config, probes: list[list[str]] | None = None) -> dict:
         checksum = (checksum + shard["checksum"]) % (1 << 64)
         latest_devices += shard["latest_devices"]
         latest_sum += shard["latest_sum"]
+        latest_by_device.update(shard["latest_by_device"])
         for total, (count, mark) in zip(totals, shard["probes"], strict=True):
             total[0] += count
             total[1] = (total[1] + mark) % (1 << 64)
@@ -381,6 +384,7 @@ async def run(config: Config, probes: list[list[str]] | None = None) -> dict:
         "http_latency": latency.summary(),
         "checksum": str(checksum),
         "latest": {"devices": latest_devices, "timestamp_sum": str(latest_sum)},
+        "latest_by_device": latest_by_device,
         "probes": [{"count": count, "checksum": str(mark)} for count, mark in totals],
     }
 

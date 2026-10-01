@@ -1,0 +1,8 @@
+ calls | total_ms | mean_ms | rows_per_call |                              q                               
+-------+----------+---------+---------------+--------------------------------------------------------------
+ 42301 |   312725 |    7.39 |           426 | INSERT INTO device_latest AS device (device_id, position, re
+ 42301 |   155348 |    3.67 |           851 | WITH samples AS MATERIALIZED ( SELECT ordinality - $3 AS rep
+ 42301 |     1207 |    0.03 |             1 | INSERT INTO consumer_progress AS progress (topic_id, partiti
+ 42301 |     1178 |    0.03 |             1 | SELECT persisted FROM consumer_progress WHERE topic_id = $1 
+(4 rows)
+

@@ -13,6 +13,7 @@ from uuid import uuid4
 import aiohttp
 import orjson
 import websockets
+from aiokafka.partitioner import DefaultPartitioner
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from generator import Config, Histogram, fingerprint, run
@@ -192,6 +193,31 @@ async def stored_latest(project: str, prefix: str) -> dict:
     return {"devices": int(devices), "timestamp_sum": str(int(total))}
 
 
+async def record_mismatch(args: argparse.Namespace, prefix: str, expected: dict[str, int]) -> None:
+    rows = await psql(
+        args.project,
+        "SELECT device_id, (extract(epoch FROM reported_at) * 1000000)::bigint"
+        f" FROM device_latest WHERE device_id LIKE '{prefix}-%'",
+    )
+    stored = dict(line.split(",") for line in rows.splitlines())
+    java = DefaultPartitioner()
+    partitions = list(range(24))
+    wrong = [
+        {
+            "device_id": device,
+            "expected_us": stamp,
+            "stored_us": int(stored[device]) if device in stored else None,
+            "partition": java(device.encode(), partitions, partitions),
+        }
+        for device, stamp in expected.items()
+        if stored.get(device) != str(stamp)
+    ]
+    path = args.output.with_suffix(".mismatch.json")
+    path.write_bytes(
+        orjson.dumps({"prefix": prefix, "mismatched": len(wrong), "devices": wrong[:2000]})
+    )
+
+
 async def forget_devices(project: str, prefix: str) -> None:
     await psql(project, f"DELETE FROM device_latest WHERE device_id LIKE '{prefix}-%'")
     await psql(project, "VACUUM (ANALYZE) device_latest")
@@ -296,6 +322,7 @@ async def benchmark(args: argparse.Namespace) -> dict:
 
         await settle()
         baseline = await read(TOTALS)
+        keep = False
         began = time.monotonic()
 
         async def sample() -> None:
@@ -354,6 +381,10 @@ async def benchmark(args: argparse.Namespace) -> dict:
                     stop.set()
                 observed = await asyncio.gather(*watchers)
                 stored = await stored_latest(args.project, prefix)
+                expected = generated.pop("latest_by_device")
+                if stored != generated["latest"]:
+                    keep = True
+                    await record_mismatch(args, prefix, expected)
         finally:
             sampler.cancel()
             await asyncio.gather(sampler, return_exceptions=True)
@@ -362,7 +393,8 @@ async def benchmark(args: argparse.Namespace) -> dict:
                     args.url + f"/geozones/{zone_id}", headers={"X-User-ID": owner}
                 ):
                     pass
-            await forget_devices(args.project, prefix)
+            if not keep:
+                await forget_devices(args.project, prefix)
         final = await read(TOTALS)
         window = f"{int(time.monotonic() - began) + 60}s"
         final["counter_resets"] = await value(
