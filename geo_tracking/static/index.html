@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f5f5ef"><meta name="description" content="Live fleet tracking, private geofences and real-time operations.">
+  <title>Fleetline — live operations</title><link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/vendor/leaflet.css"><link rel="stylesheet" href="/static/style.css">
+  <script defer src="/static/vendor/leaflet.js"></script><script defer src="/static/app.js"></script>
+</head>
+<body>
+<svg class="icon-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+ <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+ <symbol id="i-fleet" viewBox="0 0 24 24"><path d="m12 3 8 17-8-4-8 4 8-17Z"/></symbol>
+ <symbol id="i-zone" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2"/><path d="M12 1v3m0 16v3M1 12h3m16 0h3"/></symbol>
+ <symbol id="i-activity" viewBox="0 0 24 24"><path d="M2 12h5l3-8 4 16 3-8h5"/></symbol>
+ <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></symbol>
+ <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+ <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+ <symbol id="i-expand" viewBox="0 0 24 24"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></symbol>
+ <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/></symbol>
+ <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14A8 8 0 0 1 10 4a8 8 0 1 0 10 10Z"/></symbol>
+ <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+</defs></svg>
+<header class="topbar">
+ <a class="brand" href="/" aria-label="Fleetline home"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 25V7h18M7 16h14M16 25V16"/></svg><span>fleetline<span class="brand-dot">.</span></span></a>
+ <div class="topbar-title">Live operations <span class="separator">/</span> <span id="workspace-label">Alice’s workspace</span></div>
+ <div class="topbar-actions"><span id="status" class="connection connecting" role="status"><span class="status-dot"></span><span id="status-label">Connecting</span></span><button id="theme-toggle" class="icon-button" aria-label="Switch to dark theme" title="Switch theme"><svg><use href="#i-moon"/></svg></button><button id="identity-toggle" class="avatar" aria-label="Switch dashboard user" title="Switch dashboard user">A</button></div>
+</header>
+<div id="identity-panel" class="identity-panel" hidden><form id="identity"><label for="user">Dashboard user</label><div class="inline"><input id="user" value="alice" required maxlength="96" pattern="[\w.-]+" autocomplete="off"><button class="primary">Switch</button></div><p>Use the same name in another tab for a second live session. Your geofences and alerts are private to this name.</p></form></div>
+<main class="workspace">
+ <aside class="sidebar" aria-label="Operations workspace">
+  <div class="sidebar-intro"><div class="intro-line"><h1>Your fleet,<br>in the picture.</h1><span class="live-tag">LIVE</span></div><p>Every position. The places that matter.</p></div>
+  <div class="fleet-summary"><div><strong id="device-count">0</strong><span>tracked devices</span></div><div class="summary-secondary"><strong id="zone-count">0</strong><span>active zones</span></div></div>
+  <nav class="tabs" aria-label="Workspace views"><button data-view="fleet" class="selected" aria-pressed="true"><svg><use href="#i-fleet"/></svg>Fleet</button><button data-view="zones" aria-pressed="false"><svg><use href="#i-zone"/></svg>Geofences</button><button data-view="activity" aria-pressed="false"><svg><use href="#i-activity"/></svg>Activity<span id="activity-badge" hidden>0</span></button><button data-view="brief" aria-pressed="false"><svg><use href="#i-spark"/></svg>Brief</button></nav>
+  <section id="fleet-view" class="view">
+   <label class="search-field"><svg><use href="#i-search"/></svg><input id="fleet-search" type="search" placeholder="Find a device…" aria-label="Search devices" autocomplete="off"><kbd>/</kbd></label>
+   <div class="list-heading"><h2>Fleet overview</h2><select id="fleet-filter" aria-label="Filter fleet"><option value="all">All devices</option><option value="fresh">Recent reports</option><option value="stale">Older than 1 min</option></select></div>
+   <div id="fleet-list" class="fleet-list"><div class="empty-state"><svg><use href="#i-fleet"/></svg><h3>Waiting for the first signal</h3><p>Connect your devices or start the load generator. Live positions will appear on the map.</p></div></div>
+   <p id="fleet-list-caption" class="list-caption"></p>
+  </section>
+  <section id="zones-view" class="view" hidden><div class="list-heading"><h2>Your geofences</h2><button id="new-zone" class="primary compact"><svg><use href="#i-plus"/></svg>Add zone</button></div><p class="view-description">Circular areas with alerts on every fresh inside report.</p><div id="zones" class="zone-list"></div></section>
+  <section id="activity-view" class="view" hidden><div class="list-heading"><h2>Live activity</h2><button id="clear-alerts" class="text-button">Clear feed</button></div><p class="view-description"><span id="alert-count">0</span> inside reports this session · latest 80 shown</p><div id="alerts" class="alert-list"></div></section>
+  <section id="brief-view" class="view" hidden><div class="list-heading"><h2>Operations brief</h2><button id="refresh-insights" class="text-button">Refresh</button></div><p class="view-description">Current fleet health and your zone coverage.</p><div id="insights"><p class="view-description">Loading the latest picture…</p></div><section class="assistant-section"><h2>Ask your fleet</h2><p id="assistant-status" class="view-description">Checking assistant availability…</p><form id="assistant-form"><label for="assistant-prompt">What would you like to plan?</label><textarea id="assistant-prompt" rows="3" maxlength="1000" placeholder="Suggest a 500 m zone around the selected device" required disabled></textarea><button id="ask-assistant" class="primary full" disabled>Ask assistant<svg><use href="#i-spark"/></svg></button></form><div id="assistant-answer" hidden><p id="assistant-summary"></p><button id="use-proposal" class="primary full" hidden>Review proposed geofence<svg><use href="#i-arrow"/></svg></button><p class="assistant-note">Suggestions never change your zones automatically.</p></div></section></section>
+  <section id="zone-editor" class="zone-editor" hidden><div class="list-heading"><h2 id="editor-title">New geofence</h2><button id="cancel-edit" class="icon-button" aria-label="Close zone editor"><svg><use href="#i-close"/></svg></button></div><p class="view-description">Click the map to set a centre, then choose a radius.</p><form id="zone-form"><label for="name">Zone name</label><input id="name" value="Downtown" required maxlength="120" placeholder="e.g. Distribution centre"><div class="coordinates"><div><label for="latitude">Latitude</label><input id="latitude" type="number" value="56.9496" min="-90" max="90" step="any" required></div><div><label for="longitude">Longitude</label><input id="longitude" type="number" value="24.1052" min="-180" max="180" step="any" required></div></div><label for="radius">Radius <span>metres</span></label><input id="radius" type="number" value="500" min="0.01" step="any" required><div class="radius-presets"><button type="button" data-radius="250">250 m</button><button type="button" data-radius="500">500 m</button><button type="button" data-radius="1000">1 km</button><button type="button" data-radius="5000">5 km</button></div><button id="save-zone" class="primary full">Create geofence<svg><use href="#i-arrow"/></svg></button></form></section>
+  <div class="sidebar-footer"><svg><use href="#i-zone"/></svg><span>Shared fleet. Private geofences.</span></div>
+ </aside>
+ <section class="map-panel" aria-label="Live fleet map"><div id="map"></div><div class="map-heading"><span class="map-location" id="map-location">Riga, Latvia</span><span id="map-mode">Live positions</span></div><div class="map-tools"><button id="fit-fleet" class="map-button" title="Fit fleet to map"><svg><use href="#i-expand"/></svg><span>Fit fleet</span></button><button id="zone-visibility" class="map-button" title="Toggle geofences" aria-pressed="true"><svg><use href="#i-zone"/></svg><span>Geofences</span></button></div><div id="map-empty" class="map-empty"><div class="radar-illustration" aria-hidden="true"><span></span><span></span><span></span><i></i></div><h2>Ready when your fleet is.</h2><p>Positions update here as devices report.<br>Create a geofence to start watching an area.</p><button id="empty-create" class="primary">Create your first geofence<svg><use href="#i-arrow"/></svg></button></div><div id="inspector" class="inspector" hidden><div class="list-heading"><div><span class="inspector-label">Selected device</span><h2 id="inspector-id"></h2></div><button id="close-inspector" class="icon-button" aria-label="Close device inspector"><svg><use href="#i-close"/></svg></button></div><div class="inspector-data"><div><span>Latitude</span><strong id="inspector-lat"></strong></div><div><span>Longitude</span><strong id="inspector-lng"></strong></div><div><span>Last reported</span><strong id="inspector-time"></strong></div><div><span>Signal age</span><strong id="inspector-age"></strong></div></div><button id="follow-device" class="text-button">Follow on map</button></div><div class="map-legend"><span><i class="device-key"></i><span id="device-legend">Device</span></span><span><i class="zone-key"></i>Active geofence</span><span id="visible-count">0 on map</span></div><div class="map-attribution">© OpenStreetMap contributors</div></section>
+</main>
+<footer class="systembar"><div><span class="status-dot"></span><span id="system-status">Connecting to the live stream</span></div><div><span id="update-rate">0 updates / sec</span><span class="separator">·</span><span id="latency">Processing —</span><span class="separator">·</span><time id="clock"></time></div></footer>
+<div id="error" class="toast" role="alert" hidden><span id="error-message"></span><button id="dismiss-error" class="icon-button" aria-label="Dismiss notification"><svg><use href="#i-close"/></svg></button></div>
+</body>
+</html>

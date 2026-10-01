@@ -1,0 +1,55 @@
+{
+  "source_mode": "Playwright source-file route overlay against live http://127.0.0.1:8097 API; application container was deliberately left running throughout its 900-second baseline",
+  "overlay_browser_requirement": "Chromium local-network-access permission was granted because interception changes origin address-space classification; this is test tooling, not a user app requirement",
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 1000,
+      "horizontal_overflow": false
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "horizontal_overflow": false
+    }
+  ],
+  "rendering": {
+    "real_devices": 20002,
+    "fleet_canvas_elements": 1,
+    "rendered_fleet_rows": 60,
+    "bounded_alert_feed": 80
+  },
+  "functional": {
+    "search_exact_device": true,
+    "device_inspector": true,
+    "actual_insights": true,
+    "unconfigured_ai_disabled": true,
+    "zone_create": true,
+    "zone_edit": true,
+    "zone_pause": true,
+    "zone_resume": true,
+    "zone_delete": true,
+    "two_browser_sessions_receive_private_reports": true,
+    "microsecond_ordering": {
+      "device_id": "ui-review-micro-1001",
+      "first": "2026-10-01T14:46:44.000100Z",
+      "second": "2026-10-01T14:46:44.000900Z",
+      "displayed_latitude": 57.5002,
+      "http_statuses": [
+        200,
+        200
+      ]
+    },
+    "user_switch_clears_private_zones_and_alerts": true,
+    "stale_socket_after_user_switch_ignored": true,
+    "stale_socket_after_same_user_reconnect_ignored": true,
+    "test_zone_cleanup_status": 204
+  },
+  "notes": [
+    "The first QA geofence briefly overlapped the live Riga fleet; it was moved to an isolated location and deleted. The first exact-alert-total assertion was unsuitable for this workload; final assertions checked unique test device reports in both sessions.",
+    "Initial CARTO tiles required an API key. Replaced with OpenStreetMap tiles; real map capture is desktop.png/mobile.png.",
+    "Impeccable detector identified undersized labels and diffuse panel shadows; mechanical typography and shadow fixes applied. Cream palette warning retained as documented daytime visual direction."
+  ],
+  "final_served_verification": "served-verification-mupp28rp.json",
+  "final_served_checks": "Passed with overlays removed; see timestamped screenshots and separate actual-served JSON."
+}

@@ -1,0 +1,16 @@
+name: Verify fleet service
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose up --build -d --wait
+      - run: docker compose --profile test run --build --no-deps --rm tests
+      - run: docker compose --profile test run --no-deps --rm tests ruff check
+      - run: docker compose --profile test run --no-deps --rm tests ruff format --check
+      - if: failure()
+        run: docker compose logs --tail 100
+      - if: always()
+        run: docker compose down -v

@@ -1,0 +1,39 @@
+{
+  "during_outage": {
+    "readiness": {
+      "status": 503,
+      "body": {
+        "detail": "database_unavailable"
+      }
+    },
+    "ingestion": {
+      "status": 503,
+      "body": {
+        "detail": "database_unavailable"
+      }
+    },
+    "crud": {
+      "status": 503,
+      "body": {
+        "detail": "database_unavailable"
+      }
+    }
+  },
+  "after_recovery": {
+    "readiness": {
+      "status": 200,
+      "body": {
+        "status": "ready"
+      }
+    },
+    "ingestion": {
+      "status": 200,
+      "body": {
+        "statuses": [
+          "accepted"
+        ]
+      }
+    }
+  },
+  "passed": true
+}

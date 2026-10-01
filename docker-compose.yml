@@ -1,0 +1,55 @@
+name: geo-tracking-test-task
+services:
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgis
+    environment:
+      POSTGRES_DB: geo
+      POSTGRES_USER: geo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-demo-password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U geo -d geo"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    mem_limit: 1g
+    cpus: 2
+  app:
+    build: .
+    environment:
+      GEO_DATABASE_URL: postgresql+asyncpg://geo:${POSTGRES_PASSWORD:-local-demo-password}@db:5432/geo
+      GEO_OPENAI_API_KEY: ${GEO_OPENAI_API_KEY:-}
+      GEO_ASSISTANT_MODEL: ${GEO_ASSISTANT_MODEL:-gpt-4.1-mini}
+    ports:
+      - "127.0.0.1:${APP_PORT:-8097}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    cpus: 2
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    profiles: [test]
+    environment:
+      GEO_DATABASE_URL: postgresql+asyncpg://geo:${POSTGRES_PASSWORD:-local-demo-password}@db:5432/geo_test
+    depends_on:
+      db:
+        condition: service_healthy
+    command: [sh, -c, "python -m scripts.test_database && alembic upgrade head && python -m pytest -q"]
+volumes:
+  postgres-data:

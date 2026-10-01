@@ -1,0 +1,35 @@
+[project]
+name = "geo-tracking-test-task"
+version = "0.1.0"
+description = "Bounded real-time fleet tracking and private geozone alerts"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.30,<1",
+  "sqlalchemy[asyncio]>=2.0.36,<2.1",
+  "asyncpg>=0.30,<1",
+  "geoalchemy2>=0.16,<1",
+  "alembic>=1.14,<2",
+  "pydantic-settings>=2.6,<3",
+  "orjson>=3.10,<4",
+  "aiohttp>=3.11,<4",
+  "websockets>=14,<17",
+  "openai>=2,<3",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "pytest-asyncio>=0.25,<2", "httpx>=0.28,<1", "ruff>=0.9,<1"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.uv]
+package = false
