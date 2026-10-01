@@ -8,6 +8,7 @@ from starlette.requests import HTTPConnection
 
 from geo_tracking.bus import connect_nats
 from geo_tracking.gateway import Gateway
+from geo_tracking.logs import configure
 from geo_tracking.metrics import exposition, monitor_loop
 from geo_tracking.schemas import Identifier
 from geo_tracking.settings import Settings
@@ -18,6 +19,8 @@ def create_gateway_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        configure("gateway")
+
         async def reconnected() -> None:
             await app.state.gateway.resync()
 

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 
 import confluent_kafka
@@ -56,6 +57,7 @@ class Producer:
                 "compression.type": "lz4",
                 "linger.ms": settings.produce_linger_ms,
                 "message.timeout.ms": 10000,
+                "logger": logging.getLogger("librdkafka"),
             }
         )
         self.poller: asyncio.Task[None] | None = None
@@ -112,7 +114,12 @@ async def ensure_topic(settings: Settings) -> None:
 
 async def kafka_topic_id(settings: Settings) -> str:
     def describe() -> str:
-        admin = AdminClient({"bootstrap.servers": settings.kafka_bootstrap})
+        admin = AdminClient(
+            {
+                "bootstrap.servers": settings.kafka_bootstrap,
+                "logger": logging.getLogger("librdkafka"),
+            }
+        )
         topics = confluent_kafka.TopicCollection([settings.kafka_topic])
         return str(admin.describe_topics(topics)[settings.kafka_topic].result(timeout=10).topic_id)
 

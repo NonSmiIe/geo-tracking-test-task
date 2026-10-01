@@ -14,6 +14,7 @@ from nats.errors import Error as NatsError
 
 from geo_tracking.bus import Subjects, connect_nats, ensure_topic, kafka_topic_id
 from geo_tracking.db import DATABASE_ERRORS, Database
+from geo_tracking.logs import configure
 from geo_tracking.metrics import (
     ALERTS,
     BATCH_SECONDS,
@@ -30,7 +31,7 @@ from geo_tracking.settings import Settings
 from geo_tracking.spatial import Record, advance, match_records, persist_latest, persisted
 from geo_tracking.tiles import position_subject
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("geo_tracking.processor")
 
 
 class PublishStalled(Exception):
@@ -161,11 +162,17 @@ class Processor(ConsumerRebalanceListener):
         await self.on_partitions_revoked(set(self.lanes))
 
     async def on_partitions_assigned(self, assigned: set[TopicPartition]) -> None:
+        logger.info(
+            "partitions assigned", extra={"partitions": sorted(p.partition for p in assigned)}
+        )
         for partition in assigned - self.lanes.keys():
             self.polls[partition] = time()
             self.lanes[partition] = asyncio.create_task(self.lane(partition))
 
     async def on_partitions_revoked(self, revoked: set[TopicPartition]) -> None:
+        logger.info(
+            "partitions revoked", extra={"partitions": sorted(p.partition for p in revoked)}
+        )
         for partition in revoked:
             self.polls.pop(partition, None)
         leaving = [self.lanes.pop(partition) for partition in revoked if partition in self.lanes]
@@ -188,7 +195,10 @@ class Processor(ConsumerRebalanceListener):
             try:
                 await self.process(partition.partition, items)
             except DATABASE_ERRORS:
-                logger.exception("Batch processing failed; replaying from the first offset")
+                logger.exception(
+                    "batch failed; replaying from its first offset",
+                    extra={"partition": partition.partition, "offset": items[0].offset},
+                )
                 BATCHES.labels("failed").inc()
                 self.consumer.seek(partition, items[0].offset)
                 await asyncio.sleep(self.settings.processor_retry_seconds)
@@ -198,7 +208,10 @@ class Processor(ConsumerRebalanceListener):
             try:
                 await self.consumer.commit({partition: items[-1].offset + 1})
             except (CommitFailedError, IllegalStateError):
-                logger.warning("Offset commit lost to a rebalance; the new owner replays as stale")
+                logger.warning(
+                    "offset commit lost to a rebalance; the new owner replays",
+                    extra={"partition": partition.partition, "offset": items[-1].offset + 1},
+                )
                 COMMITS_LOST.inc()
 
 
@@ -263,9 +276,13 @@ async def serve(
 async def main() -> None:
     stopping = asyncio.Event()
     asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, stopping.set)
-    await serve(Settings(), stopping)
+    try:
+        await serve(Settings(), stopping)
+    except Exception:
+        logger.exception("processor exiting for a restart")
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    configure("processor")
     asyncio.run(main())

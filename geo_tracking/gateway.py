@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections import deque
 from collections.abc import Awaitable, Callable
 from uuid import uuid4
@@ -25,6 +26,9 @@ from geo_tracking.tiles import viewport_subjects
 
 SUBSCRIBED = b'{"type":"subscribed"}'
 RESYNC = b'{"type":"resync"}'
+
+
+logger = logging.getLogger(__name__)
 
 
 class Connection:
@@ -81,12 +85,21 @@ class Gateway:
         SUBSCRIPTIONS.set_function(lambda: len(self.subscriptions))
 
     async def resync(self) -> None:
+        logger.warning(
+            "NATS reconnected; resyncing every dashboard",
+            extra={"dashboards": len(self.connections)},
+        )
         for connection in tuple(self.connections.values()):
             connection.enqueue(RESYNC)
 
     async def dropped(self, subject: str) -> None:
         SLOW_CONSUMERS.inc()
-        for connection in tuple(self.routes.get(subject, ())):
+        listeners = tuple(self.routes.get(subject, ()))
+        logger.warning(
+            "NATS dropped a subscription's messages; resyncing",
+            extra={"subject": subject, "dashboards": len(listeners)},
+        )
+        for connection in listeners:
             connection.enqueue(RESYNC)
 
     def deliver(self, subject: str, data: bytes) -> None:
@@ -100,6 +113,14 @@ class Gateway:
     def evict(self, connection: Connection, reason: str) -> None:
         if connection.reason is None:
             EVICTIONS.labels(reason).inc()
+            logger.warning(
+                "dashboard evicted",
+                extra={
+                    "user_id": connection.user_id,
+                    "reason": reason,
+                    "queued_bytes": connection.queued_bytes,
+                },
+            )
         connection.stop(reason)
 
     async def route(self, connection: Connection, subjects: set[str]) -> None:

@@ -179,6 +179,8 @@ Prometheus (`127.0.0.1:9097`) scrapes every api, gateway and processor replica, 
 | `EventLoopLag` | A role's loop is blocked over 250 ms at p99 | CPU of that role | Add replicas of that role |
 | `TargetDown` | A scrape target is not answering | `docker compose ps` | Restart it |
 
+Logs are one JSON object per line on every role, with `role`, `level`, `logger`, `event` and the event's context. Processors log partition assignments and revocations, failed batches with partition and offset, lost offset commits, and their exit before a restart. Gateways log evictions (user, reason, queued bytes) and resyncs. librdkafka and aiokafka are routed through the same formatter. For example, `docker compose logs --no-log-prefix processor | jq 'select(.event == "partitions assigned")'` shows every rebalance.
+
 Repartitioning (more than 24 processors) is a new topic, not `--alter`: create `reports-v2` with more partitions, point the api at it, and let the processors drain `reports` before moving their group. Keyed ordering per device holds only within one topic.
 
 ## Measured results

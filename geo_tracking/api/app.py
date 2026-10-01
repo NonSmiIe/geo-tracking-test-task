@@ -17,6 +17,7 @@ from geo_tracking.bus import Producer, Subjects, connect_nats, ensure_topic
 from geo_tracking.db import DATABASE_ERRORS, Database
 from geo_tracking.demo import Demo
 from geo_tracking.ingest import Ingest
+from geo_tracking.logs import configure
 from geo_tracking.metrics import monitor_loop
 from geo_tracking.schemas import Report
 from geo_tracking.settings import Settings
@@ -35,6 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        configure("api")
         await ensure_topic(settings)
         db = Database(settings)
         producer = Producer(settings)
