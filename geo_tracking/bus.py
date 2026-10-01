@@ -8,7 +8,6 @@ from aiokafka.errors import TopicAlreadyExistsError
 from nats.aio.client import Client
 from nats.errors import SlowConsumerError
 
-from geo_tracking.metrics import SLOW_CONSUMERS
 from geo_tracking.settings import Settings
 
 
@@ -23,19 +22,20 @@ class Subjects:
         return f"{self.prefix}.zones.{user_id.encode().hex()}"
 
 
-async def counted(error: Exception) -> None:
-    if isinstance(error, SlowConsumerError):
-        SLOW_CONSUMERS.inc()
-
-
 async def connect_nats(
-    settings: Settings, reconnected: Callable[[], Awaitable[None]] | None = None
+    settings: Settings,
+    reconnected: Callable[[], Awaitable[None]] | None = None,
+    dropped: Callable[[str], Awaitable[None]] | None = None,
 ) -> Client:
+    async def failed(error: Exception) -> None:
+        if dropped is not None and isinstance(error, SlowConsumerError):
+            await dropped(error.subject)
+
     return await nats.connect(
         servers=settings.nats_servers.split(","),
         max_reconnect_attempts=-1,
         reconnect_time_wait=0.5,
-        error_cb=counted,
+        error_cb=failed,
         reconnected_cb=reconnected,
     )
 

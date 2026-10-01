@@ -20,7 +20,6 @@ from geo_tracking.metrics import (
     BATCHES,
     COMMITS_LOST,
     FRESHNESS,
-    LAST_POLL,
     PARTITIONS,
     PUBLISH_RETRIES,
     RECORDS,
@@ -38,6 +37,10 @@ class PublishStalled(Exception):
     pass
 
 
+class LaneStalled(Exception):
+    pass
+
+
 def frame(kind: str, items: list[Any]) -> bytes:
     return orjson.dumps({"type": kind, "items": items})
 
@@ -46,7 +49,7 @@ class Processor(ConsumerRebalanceListener):
     def __init__(self, settings: Settings, db: Database, nats: Client, consumer: AIOKafkaConsumer):
         self.settings, self.db, self.nats, self.consumer = settings, db, nats, consumer
         self.subjects = Subjects(settings.subject_prefix)
-        self.polled = time()
+        self.polls: dict[TopicPartition, float] = {}
         self.lanes: dict[TopicPartition, asyncio.Task[None]] = {}
         self.transactions = asyncio.Semaphore(settings.processor_transactions)
 
@@ -135,22 +138,29 @@ class Processor(ConsumerRebalanceListener):
                 await asyncio.sleep(self.settings.processor_retry_seconds)
 
     async def run(self, stopping: asyncio.Event) -> None:
+        stall = self.settings.publish_deadline_seconds + 10
         while not stopping.is_set():
-            self.polled = time()
-            LAST_POLL.set(self.polled)
+            now = time()
+            oldest = min(self.polls.values(), default=now)
             PARTITIONS.set(len(self.lanes))
+            if now - oldest > stall:
+                raise LaneStalled(f"a partition lane has not polled Kafka for {now - oldest:.0f} s")
             for partition, lane in tuple(self.lanes.items()):
                 if lane.done():
                     del self.lanes[partition]
+                    self.polls.pop(partition, None)
                     lane.result()
             await asyncio.sleep(0.1)
         await self.on_partitions_revoked(set(self.lanes))
 
     async def on_partitions_assigned(self, assigned: set[TopicPartition]) -> None:
         for partition in assigned - self.lanes.keys():
+            self.polls[partition] = time()
             self.lanes[partition] = asyncio.create_task(self.lane(partition))
 
     async def on_partitions_revoked(self, revoked: set[TopicPartition]) -> None:
+        for partition in revoked:
+            self.polls.pop(partition, None)
         leaving = [self.lanes.pop(partition) for partition in revoked if partition in self.lanes]
         for lane in leaving:
             lane.cancel()
@@ -163,6 +173,7 @@ class Processor(ConsumerRebalanceListener):
                 timeout_ms=self.settings.processor_poll_ms,
                 max_records=self.settings.processor_batch,
             )
+            self.polls[partition] = time()
             items = fetched.get(partition)
             if not items:
                 continue
@@ -196,16 +207,13 @@ def consumer(settings: Settings) -> AIOKafkaConsumer:
     )
 
 
-def health_app(processor: Processor, settings: Settings) -> web.Application:
+def health_app() -> web.Application:
     async def metrics(request: web.Request) -> web.Response:
         body, content_type = exposition("processor")
         return web.Response(body=body, headers={"Content-Type": content_type})
 
     async def live(request: web.Request) -> web.Response:
-        stalled = time() - processor.polled > settings.publish_deadline_seconds + 10
-        return web.json_response(
-            {"status": "stalled" if stalled else "alive"}, status=503 if stalled else 200
-        )
+        return web.json_response({"status": "alive"})
 
     app = web.Application()
     app.router.add_get("/metrics", metrics)
@@ -223,7 +231,7 @@ async def serve(
     processor = Processor(settings, db, nats, kafka)
     kafka.subscribe([settings.kafka_topic], listener=processor)
     await kafka.start()
-    runner = web.AppRunner(health_app(processor, settings), access_log=None)
+    runner = web.AppRunner(health_app(), access_log=None)
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", settings.metrics_port).start()
     monitor = asyncio.create_task(monitor_loop("processor"))

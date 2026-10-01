@@ -21,7 +21,10 @@ def create_gateway_app(settings: Settings | None = None) -> FastAPI:
         async def reconnected() -> None:
             await app.state.gateway.resync()
 
-        nats = await connect_nats(settings, reconnected)
+        async def dropped(subject: str) -> None:
+            await app.state.gateway.dropped(subject)
+
+        nats = await connect_nats(settings, reconnected, dropped)
         app.state.gateway = Gateway(settings, nats)
         monitor = asyncio.create_task(monitor_loop("gateway"))
         try:

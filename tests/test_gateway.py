@@ -65,3 +65,13 @@ async def test_resync_reaches_every_open_dashboard() -> None:
     hub.connections = {"a": first, "b": second}
     await hub.resync()
     assert list(first.queue) == [RESYNC] and list(second.queue) == [RESYNC]
+
+
+async def test_a_dropped_subscription_resyncs_only_its_dashboards() -> None:
+    settings = Settings()
+    hub = gateway(settings)
+    routed, other = Connection("alice", Socket(), settings), Connection("bob", Socket(), settings)
+    hub.connections = {"a": routed, "b": other}
+    hub.routes["fleet.pos.0"] = {routed}
+    await hub.dropped("fleet.pos.0")
+    assert list(routed.queue) == [RESYNC] and not other.queue

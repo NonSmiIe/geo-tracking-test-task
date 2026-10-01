@@ -28,11 +28,6 @@ groups:
         labels: {severity: critical}
         annotations:
           summary: Some partitions have no processor; their devices are frozen.
-      - alert: ProcessorStalled
-        expr: time() - fleet_processor_last_poll_timestamp_seconds > 40
-        labels: {severity: critical}
-        annotations:
-          summary: "{{ $labels.instance }} has not polled Kafka for 40 s."
       - alert: FreshnessSlow
         expr: fleet:freshness:p95 > 1
         for: 2m
@@ -41,8 +36,8 @@ groups:
           summary: p95 time from report to commit is over 1 s.
       - alert: IngestShedding
         expr: >
-          sum(rate(fleet_ingest_reports_total{outcome="overloaded"}[1m]))
-          / clamp_min(sum(rate(fleet_ingest_reports_total[1m])), 1) > 0.01
+          sum(rate(fleet_ingest_reports_total{transport="http", outcome="overloaded"}[1m]))
+          / clamp_min(sum(rate(fleet_ingest_reports_total{transport="http"}[1m])), 1) > 0.01
         for: 1m
         labels: {severity: critical}
         annotations:
@@ -67,7 +62,7 @@ groups:
         expr: sum(increase(fleet_gateway_slow_consumers_total[5m])) > 0
         labels: {severity: warning}
         annotations:
-          summary: NATS dropped messages for a gateway subscription.
+          summary: NATS dropped messages for a gateway subscription; its dashboards were told to resync.
       - alert: EventLoopLag
         expr: >
           histogram_quantile(0.99, sum by (job, le) (rate(fleet_event_loop_lag_seconds_bucket[1m]))) > 0.25

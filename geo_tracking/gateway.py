@@ -11,7 +11,14 @@ from pydantic import ValidationError
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from geo_tracking.bus import Subjects
-from geo_tracking.metrics import CONNECTIONS, EVICTIONS, FRAME_BYTES, FRAMES, SUBSCRIPTIONS
+from geo_tracking.metrics import (
+    CONNECTIONS,
+    EVICTIONS,
+    FRAME_BYTES,
+    FRAMES,
+    SLOW_CONSUMERS,
+    SUBSCRIPTIONS,
+)
 from geo_tracking.schemas import ViewportAdapter
 from geo_tracking.settings import Settings
 from geo_tracking.tiles import viewport_subjects
@@ -75,6 +82,11 @@ class Gateway:
 
     async def resync(self) -> None:
         for connection in tuple(self.connections.values()):
+            connection.enqueue(RESYNC)
+
+    async def dropped(self, subject: str) -> None:
+        SLOW_CONSUMERS.inc()
+        for connection in tuple(self.routes.get(subject, ())):
             connection.enqueue(RESYNC)
 
     def deliver(self, subject: str, data: bytes) -> None:

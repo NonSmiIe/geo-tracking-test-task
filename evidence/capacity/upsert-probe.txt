@@ -1,0 +1,21 @@
+# Idle-database upsert probe: 500,000 rows in device_latest, 2,000-row batches, median of 31 runs each
+                                                         version                                                          
+--------------------------------------------------------------------------------------------------------------------------
+ PostgreSQL 18.0 (Debian 18.0-1.pgdg13+3) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+(1 row)
+
+              statement               | median_ms 
+--------------------------------------+-----------
+ on conflict upsert, ms per 2000 rows |     11.60
+(1 row)
+
+        statement        | median_ms 
+-------------------------+-----------
+ merge, ms per 2000 rows |     13.31
+(1 row)
+
+      statement       | value  
+----------------------+--------
+ hot share of updates | 0.9828
+(1 row)
+

@@ -70,9 +70,6 @@ COMMITS_LOST = Counter(
 PARTITIONS = Gauge(
     "fleet_processor_partitions", "Partitions this processor owns", registry=PROCESSOR
 )
-LAST_POLL = Gauge(
-    "fleet_processor_last_poll_timestamp_seconds", "When Kafka was last polled", registry=PROCESSOR
-)
 
 LOOP_LAG = {
     role: Histogram(

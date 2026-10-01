@@ -17,7 +17,7 @@ Open **http://127.0.0.1:8097**; API documentation is at **/docs**. Compose start
 
 | Service | Role |
 | --- | --- |
-| `db` | PostgreSQL 17 + PostGIS 3, named volume |
+| `db` | PostgreSQL 18 + PostGIS 3, named volume |
 | `kafka` | Kafka 4.1 (KRaft, single broker), topic `reports` with 24 partitions |
 | `nats` | NATS 2.11 core, live event routing |
 | `migrate` | One-shot `alembic upgrade head` before anything serves traffic |
@@ -26,7 +26,7 @@ Open **http://127.0.0.1:8097**; API documentation is at **/docs**. Compose start
 | `gateway` | FastAPI, one process per replica (`GATEWAYS`, default 2): dashboard WebSockets |
 | `processor` | Kafka consumer group (`PROCESSORS`, default 8 replicas): dedup, PostGIS matching, persistence, fanout |
 
-Only the edge port is published, and only on `127.0.0.1`. Application containers run as a non-root user with a read-only root filesystem, no Linux capabilities, `no-new-privileges`, and memory and CPU limits. Credentials come from `.env`. Stop with `docker compose stop`.
+Three ports are published, all on `127.0.0.1` only: the edge (`8097`), Prometheus (`9097`) and Grafana (`3097`). Application containers run as a non-root user with a read-only root filesystem, no Linux capabilities, `no-new-privileges`, and memory and CPU limits. Credentials come from `.env`. Stop with `docker compose stop`.
 
 For the generator, benchmark and tooling, install [uv](https://docs.astral.sh/uv/) and run `uv sync --frozen` (Python 3.12+).
 
@@ -66,13 +66,13 @@ After commit the processor publishes to NATS, flushes, and only then commits the
 
 **Fanout is routed by NATS subjects, not by scanning.** Positions are published per Web-Mercator tile as `fleet.pos.<d1>.<d2>…<d8>`, a zoom-8 quadkey with one digit per token. Because quadkeys nest, a coarser tile is a subject prefix, so `fleet.pos.1.2.>` covers everything beneath it. A dashboard sends its viewport; the gateway picks the finest level whose tile cover has at most 16 tiles and subscribes to those subjects. Subscriptions are reference-counted across all of a gateway's connections, so NATS only delivers what some local viewer needs. Alerts go to `fleet.alerts.<hex(user)>` and zone changes to `fleet.zones.<hex(user)>`; every gateway holding a session of that user subscribes, which is how all of a user's sessions get every alert whichever gateway holds them. Processors serialize each frame once and gateways forward it without parsing the JSON.
 
-**Latest positions stay cheap to update.** `device_latest` has no spatial index: an index on a column that changes on every report rules out PostgreSQL's in-place (HOT) updates. Instead each row carries a generated 0.25° grid cell with a btree index, which changes only when a device moves about 28 km. Viewport snapshots and zone occupancy pick their candidate cells with `grid_cells()` and filter exactly with PostGIS. At 200k devices this raised HOT updates from 2% to 99% and cut database CPU by 46%.
+**Latest positions stay cheap to update.** `device_latest` has no spatial index: an index on a column that changes on every report rules out PostgreSQL's in-place (HOT) updates. Instead each row carries a generated 0.25° grid cell with a btree index, which changes only when a device moves about 28 km. Viewport snapshots and zone occupancy pick their candidate cells with `grid_cells()` and filter exactly with PostGIS. At 200k devices it cut database CPU by 46% (194% → 105%); [an idle probe](evidence/capacity/upsert-probe.txt) shows 98.3% of updates are HOT.
 
 **WebSocket state.** Each gateway keeps a `connection_id → Connection` registry plus `subject → connections` routes. A connection has one bounded byte queue and exactly one writer task, with a send deadline. Fanout only enqueues, so a slow socket never blocks others. A socket that overflows its queue or misses the deadline is closed alone with an explicit reason, and its siblings keep streaming. The browser opens its socket, sends its viewport, waits for `subscribed`, and only then loads the `/devices/latest` snapshot for that box. Snapshot and stream merge by microsecond timestamp, so a slow snapshot never overwrites a fresher position.
 
 **Why Kafka and NATS, and not Redis.** The ingest log needs durable partitions with exclusive, automatically rebalanced ownership; Kafka consumer groups are exactly that, and on Redis Streams it would have to be hand-built. The live path needs interest-based routing to the gateways that hold a viewer, and NATS subject wildcards do it inside the broker; Kafka would make every gateway read and decode the whole stream.
 
-**Database use.** Every process has one async engine with a bounded pool and a fixed checkout timeout (api replicas 5, processors 2), plus a statement timeout. Sessions are short-lived and never belong to a WebSocket. Pool exhaustion or a database fault on REST returns `503`, while ingest keeps accepting into Kafka.
+**Database use.** Every process has one async engine with a bounded pool and a fixed checkout timeout (api replicas 5, processors 4, one per concurrent partition transaction), plus a statement timeout. Sessions are short-lived and never belong to a WebSocket. Pool exhaustion or a database fault on REST returns `503`, while ingest keeps accepting into Kafka.
 
 ## Semantics
 
@@ -94,8 +94,8 @@ After commit the processor publishes to NATS, flushes, and only then commits the
 | `GET /devices/latest` | Fleet snapshot; optional `south,west,north,east` box (antimeridian-aware), keyset pagination |
 | `GET /insights` | Fleet freshness and live occupancy of this user's zones |
 | `WS /ws?user_id=` | `ready` → client `viewport` → `subscribed`, then `positions`, `inside_report`, `zones_changed`, and `resync` after the gateway's NATS connection recovers (live events published meanwhile are gone; the client reloads its snapshot) |
-| `GET/POST /demo`, `/demo/start`, `/demo/stop` | Guided demo for the current user; its state lives in PostgreSQL, so any replica can answer |
-| `/health/live` | The only health signal, used by compose and the edge. There is no readiness that depends on Kafka, PostgreSQL or NATS. A dependency outage is answered per request (`503`, or a socket close) and raised by alerts. Taking replicas out of rotation for it only turns a partial outage into a total one: at 300k devices a Kafka-probing readiness check timed out on every saturated replica, and the edge had no api server left. Processors serve `/health/live` on port 9100 and report `stalled` once Kafka has not been polled for the publish deadline plus 10 s |
+| `GET /demo`, `POST /demo/start`, `POST /demo/stop` | Guided demo for the current user; its state lives in PostgreSQL, so any replica can answer |
+| `/health/live` | The only health signal, used by compose and the edge. There is no readiness that depends on Kafka, PostgreSQL or NATS. A dependency outage is answered per request (`503`, or a socket close) and raised by alerts. Taking replicas out of rotation for it only turns a partial outage into a total one: at 300k devices a Kafka-probing readiness check timed out on every saturated replica, and the edge had no api server left. Processors serve `/health/live` and `/metrics` on port 9100. A processor whose partition lane has not polled Kafka for the publish deadline plus 10 s exits, so compose restarts it and the group rebalances |
 | `/metrics` | Prometheus exposition, per process: api and gateway on their port, processors on 9100. Not routed by the edge; Prometheus scrapes each replica |
 | `GET /stats` | Fleet-wide freshness p95, ingest rate and consumer lag, read from Prometheus for the dashboard |
 
@@ -116,7 +116,7 @@ Frames:
 | In-flight produces per api process (HTTP and sockets) | 8,192 |
 | In-flight produces per device socket | 1,024 |
 | Processor poll | 2,000 records / 50 ms |
-| Database pool | 5 per api process, 2 per processor, no overflow, 1 s checkout |
+| Database pool | 5 per api process, 4 per processor, no overflow, 1 s checkout |
 | Statement timeout | 2 s |
 | Zones per user | 1,000 |
 | Dashboard sessions per gateway | 128 |
@@ -142,7 +142,7 @@ Changing the partition count of a live topic remaps devices to partitions and br
 
 ## Load generator
 
-`generator.py` simulates N devices across a configurable region (150 km radius around Riga by default). Every device has a heading and speed that drift each tick, which gives realistic tracks rather than jitter. Devices are sharded across processes; each process keeps a monotonic, open-loop schedule with random phases, so a slow server never lowers the offered rate. Reports go over multiplexed `/ingest` sockets by default (`--transport http` uses one `POST /locations` per report, `--batch-size` the batch endpoint). The generator counts scheduled, sent, acknowledged, dropped and late reports and a 64-bit identity checksum of everything sent.
+`generator.py` simulates N devices across a configurable region (150 km radius around Riga by default). Every device has a heading and speed that drift each tick, which gives realistic tracks rather than jitter. Devices are sharded across processes; each process keeps a monotonic, open-loop schedule with random phases, so a slow server never lowers the offered rate. Reports go over multiplexed `/ingest` sockets by default (`--transport http` posts batches of `--batch-size` reports, 100 by default, to `/locations/batch`; `--batch-size 1` uses `POST /locations`). The generator counts scheduled, sent, acknowledged, dropped and late reports and a 64-bit identity checksum of everything sent.
 
 ```sh
 uv run python generator.py --devices 100000 --interval 5 --duration 900
@@ -158,7 +158,7 @@ uv run python scripts/benchmark.py --devices 100000 --duration 900
 
 The tests run against real PostGIS, Kafka and NATS; each test gets its own topic, consumer group and subject prefix. They cover metre-correct containment and boundaries, high latitudes, poles and the antimeridian, footprint-versus-exact equality, coordinate order, paused and deleted zones, owner scoping, the zone quota, duplicates, stale samples and in-batch zone crossings. They also cover dense overlap (60 zones over the same devices, no rejected report), private delivery to every owner session, viewport routing and retargeting, device-socket acknowledgements, replay after a database failure, a crash between commit and publish, watermarks surviving a processor restart, slow-socket eviction and the guided demo.
 
-The benchmark observes four dashboard sessions, each in its own process: two for the owner of a zone covering the whole fleet, one for another user with a world view, and one for that user with a small probe viewport. It reconciles every position and alert against the generator by count and identity checksum, checks that processors committed exactly what was acknowledged and that consumer lag drained, and records latency from the scheduled timestamp and container resources. The criteria were declared before the run in [acceptance policy v3](evidence/acceptance-policy-v3.md).
+The benchmark observes four dashboard sessions, each in its own process: two for the owner of a zone covering the whole fleet, one for another user with a world view, and one for that user with a small probe viewport. It reconciles every position and alert against the generator by count and identity checksum, checks that processors committed exactly what was acknowledged and that consumer lag drained, and records latency from the scheduled timestamp and container resources. The criteria were declared before the runs: [policy v4](evidence/acceptance-policy-v4.md) for runs since the Prometheus metrics, [v3](evidence/acceptance-policy-v3.md) for the ones before.
 
 ## Operations
 
@@ -169,12 +169,11 @@ Prometheus (`127.0.0.1:9097`) scrapes every api, gateway and processor replica, 
 | `RetentionAtRisk` | Lag exceeds 15 min of ingest; retention is 30 min, so acked reports will be deleted unread | Consumer lag and partitions per processor | Add processors (up to 24). If PostgreSQL is saturated, more processors will not help: see `Statement time per second` |
 | `ConsumerLagGrowing` | Processors commit slower than ingest accepts | Batch time p95, database statement time | Same as above, earlier |
 | `PartitionsUnowned` | Fewer partitions assigned than exist; those devices are frozen | `fleet_processor_partitions` by instance, `TargetDown` | Restart or scale processors; a rebalance assigns orphans within seconds |
-| `ProcessorStalled` | A processor has not polled for 40 s (stuck publishing or on the database) | Its logs; NATS and database health | Its own healthcheck fails and compose restarts it; the replacement replays from the last committed offset, losing nothing |
 | `FreshnessSlow` | p95 from report to published event is over 1 s | Lag, batch time, event-loop lag | Capacity: see the measured ceiling below |
-| `IngestShedding` | Over 1% of HTTP reports get 503 | Produce window fill, Kafka health | Add api replicas if the windows are full but Kafka is healthy; otherwise fix Kafka |
+| `IngestShedding` | Over 1% of HTTP reports are refused for a full window (`503 ingest_capacity`; sockets are backpressured, never refused) | Produce window fill, Kafka health | Add api replicas if the windows are full but Kafka is healthy; otherwise fix Kafka |
 | `IngestWindowSaturated` | Kafka acknowledges slower than reports arrive on one replica | Kafka CPU and disk | Kafka capacity, not api |
 | `BatchesFailing` | Batches roll back and replay | Processor logs, database errors | Replays are safe; fix the database |
-| `DashboardsEvicted`, `GatewaySlowConsumer` | A dashboard or a gateway subscription fell behind and lost frames | Fanout bytes per gateway | Add gateways; the browser reconnects and resnapshots |
+| `DashboardsEvicted`, `GatewaySlowConsumer` | A dashboard was closed for falling behind, or NATS dropped messages for a gateway subscription | Fanout bytes per gateway | Add gateways. An evicted browser reconnects and resnapshots; on a NATS drop the gateway sends `resync` to the dashboards on that subject |
 | `EventLoopLag` | A role's loop is blocked over 250 ms at p99 | CPU of that role | Add replicas of that role |
 | `TargetDown` | A scrape target is not answering | `docker compose ps` | Restart it |
 
@@ -182,7 +181,7 @@ Repartitioning (more than 24 processors) is a new topic, not `--alter`: create `
 
 ## Measured results
 
-Apple M4 Pro; the Docker VM has 14 CPUs and 8 GB, shared with unrelated containers, and the generator and the observing clients run on the macOS host. Every run uses 100 zones and four dashboard WebSocket clients; latency is position delivery to those clients, measured from the scheduled report time (alert latency is within 3 ms of it in every run and is in each file). The first five rows predate the edge split, when api ran as 4 uvicorn workers in one container.
+Apple M4 Pro; the Docker VM has 14 CPUs and 8 GB, shared with unrelated containers, and the generator and the observing clients run on the macOS host. Every run uses 100 zones and four dashboard WebSocket clients; latency is position delivery to those clients, measured from the scheduled report time (alert latency is within 12 ms of it at every percentile in every run and is in each file). The first five rows predate the edge split, when api ran as 4 uvicorn workers in one container.
 
 | Devices · duration | Reports/s | Acknowledged | Position delivery p50 / p95 / p99 | API CPU | Processors | Verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
@@ -195,16 +194,16 @@ Apple M4 Pro; the Docker VM has 14 CPUs and 8 GB, shared with unrelated containe
 | 200,000 · 300 s, edge topology | 39,940 | 12,000,000 / 12,000,000 | 310 / 1,393 / 2,093 ms | 4 × 67%; PostgreSQL 194% | 4 × 16% | [failed: p95 over 1 s](evidence/capacity/rung-200k.json) |
 | 200,000 · 300 s, grid cell instead of device GiST | 39,959 | 12,000,000 / 12,000,000 | 114 / 448 / 768 ms | 4 × 60%; PostgreSQL 105% | 4 × 17% | [passed](evidence/capacity/rung-200k-h2.json) |
 | 300,000 · 300 s, 4 processors | 59,921 | 18,000,000 / 18,000,000 | 32 / 49 / 52 s | 4 × 70%; PostgreSQL 155% | 4 × 18% | [failed: processors commit 50k/s, lag grows](evidence/capacity/rung-300k.json) |
-| 300,000 · 300 s, 8 processors | 59,792 | 18,000,000 / 18,000,000 | 0.5 / 3.4 / 5.1 s | 4 × 69%; PostgreSQL 193% | 8 × 14% | [failed: p95 over 1 s](evidence/capacity/rung-300k-p8.json) |
+| 300,000 · 300 s, 8 processors | 59,792 | 18,000,000 / 18,000,000 | 0.5 / 3.4 / 5.1 s | 4 × 69%; PostgreSQL 193% | 8 × 14% | [failed: p95 over 1 s, Kafka memory growth](evidence/capacity/rung-300k-p8.json) |
 | 300,000 · 300 s, framed `/ingest`, PostgreSQL 18 upsert-returns-watermark, Prometheus policy v4 | 59,935 | 18,000,000 / 18,000,000 | 249 / 753 / 1,155 ms | 4 × 61%; PostgreSQL 119% | 8 × 14% | [passed](evidence/capacity/rung-300k-s1.json) |
 | 500,000 · 300 s, librdkafka producer | 99,682 | 30,000,000 / 30,000,000 | 88 / 100+ s | 4 × 64%; PostgreSQL 171% | 8 × 17% | [failed: processors commit 58k/s](evidence/capacity/rung-500k.json) |
-| 500,000 · 300 s, one lane per partition | 99,757 | 30,000,000 / 30,000,000 | 67 / 95 s | 4 × 80%; PostgreSQL 282% of 300% | 8 × 26% | [failed: PostgreSQL at its CPU limit, host 99% busy](evidence/capacity/rung-500k-s4.json) |
+| 500,000 · 300 s, one lane per partition | 99,757 | 30,000,000 / 30,000,000 | 67 / 95 s | 4 × 80%; PostgreSQL 282% of 300% | 8 × 26% | [failed: PostgreSQL at its CPU limit; generator late](evidence/capacity/rung-500k-s4.json) |
 
-**The ceiling on this laptop is between 300,000 and 500,000 devices, and it is the machine, not a tier.** At 500k the server containers used 10.8 cores and the generator plus observers most of the rest of 14. The host was 99% busy. An idle-database probe puts the upsert at about 8 µs per row (16 ms per 2,000), but under that contention it took 143 ms. Going further needs more hardware: a second machine for the load, or the per-partition shards described in [Scaling out](#scaling-out). Two 300k runs are not in the table because they measured the harness, not the service: one on a table holding 2M rows left by earlier runs, which made it I/O-bound ([kept](evidence/capacity/rung-300k-p8-progress.json)), and one where a Kafka-probing readiness check took every saturated api replica out of rotation ([kept](evidence/capacity/rung-300k-h5.json); that check is now deleted). In every passed run all four sessions reconciled exactly, including the probe viewport, which received precisely the positions in its subscribed tiles. The earlier single-process design's 10,000-device runs remain in `evidence/` under [policy v2](evidence/acceptance-policy.md).
+**The ceiling on this laptop is between 300,000 and 500,000 devices, and it is the machine, not a tier.** At 500k the server containers used 10.8 cores of 14 (median), and the generator could not hold its own schedule: 126,796 reports were more than 100 ms late, which fails the workload check. `top` showed the host at 99% during that run (observed, not stored). [An idle-database probe](evidence/capacity/upsert-probe.txt) puts the upsert at 11.6 ms per 2,000 rows (5.8 µs per row); under that contention it averaged 143 ms ([statements](evidence/capacity/rung-500k-s4-statements.txt)). Going further needs more hardware: a second machine for the load, or the per-partition shards described in [Scaling out](#scaling-out). Two 300k runs are not in the table because they measured the harness, not the service: one on a table holding 2M rows left by earlier runs: a cold 2,000-id watermark read took 159 ms against 14 ms warm, an observation not stored ([kept](evidence/capacity/rung-300k-p8-progress.json)). In the other, the edge logged "backend 'api' has no server available" while a Kafka-probing readiness check timed out on every saturated replica; the logs were not preserved ([kept](evidence/capacity/rung-300k-h5.json); that check is now deleted). In every passed run all four sessions reconciled exactly, including the probe viewport, which received precisely the positions in its subscribed tiles. The earlier single-process design's 10,000-device runs remain in `evidence/` under [policy v2](evidence/acceptance-policy.md).
 
 ### Failure campaign
 
-Each scenario runs 100,000 devices for 180 s and breaks one container at 60 s. It is judged by [fault policy v1/v2](evidence/acceptance-policy-fault-v2.md), declared before the runs. Every acknowledged report must end up acknowledged and in PostgreSQL, by count and timestamp sum. Lag must drain. A dashboard that was closed or told to resync must resume, and one that was neither must have missed nothing.
+Each scenario runs 100,000 devices for 180 s and breaks one container about 60 s in: the `docker` actions landed at 60–71 s, as recorded in each file. It is judged by [fault policy v1/v2](evidence/acceptance-policy-fault-v2.md), declared before the runs. Every scheduled report must end up acknowledged, after resends, and PostgreSQL must hold every device's newest acknowledged report (count of devices and sum of their timestamps). Lag must drain. A dashboard that was closed or told to resync must resume, and one that was neither must have missed nothing.
 
 | Scenario | Devices resent | Delivery p95 | Dashboards | Verdict |
 | --- | ---: | ---: | --- | --- |
