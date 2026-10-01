@@ -21,8 +21,6 @@ services:
     build: .
     environment:
       GEO_DATABASE_URL: postgresql+asyncpg://geo:${POSTGRES_PASSWORD:-local-demo-password}@db:5432/geo
-      GEO_OPENAI_API_KEY: ${GEO_OPENAI_API_KEY:-}
-      GEO_ASSISTANT_MODEL: ${GEO_ASSISTANT_MODEL:-gpt-4.1-mini}
     ports:
       - "127.0.0.1:${APP_PORT:-8097}:8000"
     depends_on:

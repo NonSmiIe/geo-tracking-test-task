@@ -14,7 +14,6 @@ dependencies = [
   "orjson>=3.10,<4",
   "aiohttp>=3.11,<4",
   "websockets>=14,<17",
-  "openai>=2,<3",
 ]
 
 [dependency-groups]

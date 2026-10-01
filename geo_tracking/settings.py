@@ -1,4 +1,4 @@
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,13 +21,6 @@ class Settings(BaseSettings):
     websocket_queue_frames: int = Field(default=128, ge=1)
     send_timeout_seconds: float = Field(default=2, gt=0)
     shutdown_timeout_seconds: float = Field(default=10, gt=0)
-    openai_api_key: SecretStr | None = None
-    assistant_model: str = "gpt-4.1-mini"
-
-    @field_validator("openai_api_key", mode="before")
-    @classmethod
-    def empty_key(cls, value):
-        return value or None
 
     @model_validator(mode="after")
     def check_budgets(self):

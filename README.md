@@ -2,7 +2,7 @@
 
 A real-time fleet service built with FastAPI, asynchronous SQLAlchemy and PostgreSQL/PostGIS. It receives moving-device reports, streams every accepted report to dashboards, and sends inside-zone alerts to every active session of the zone owner.
 
-The map dashboard includes fleet search, device inspection, follow mode, private circular zones, live activity, occupancy insights, a responsive mobile layout and a dark theme. A configured OpenAI assistant can explain current measurements and propose a zone draft; saving remains an explicit operator action.
+The map dashboard includes fleet search, device inspection, follow mode, private circular zones, live activity, occupancy insights, a responsive mobile layout and a dark theme.
 
 ## Run
 
@@ -47,8 +47,6 @@ uv run python scripts/drive.py
 | `GET/PATCH/DELETE /geozones/{id}` | Owner-scoped read, edit or deletion; another user's ID returns 404 |
 | `GET /devices/latest` | Shared fleet snapshot with keyset pagination |
 | `GET /insights` | Fleet freshness and this user's current zone occupancy |
-| `GET /assistant` | Assistant availability; no secret values |
-| `POST /assistant` | Read-only structured explanation or zone proposal |
 | `WS /ws?user_id=alice` | Ready event, then location and private alert frames |
 | `/health/live`, `/health/ready` | Process liveness and processor/database readiness |
 | `/metrics` | Bounded-window processing/loop-lag distributions and pipeline counters |
@@ -108,14 +106,6 @@ HTTP 200 acknowledges committed latest state and enqueue attempts to the recipie
 
 Zone edits take effect at the processing transaction's snapshot. An already evaluated alert can arrive after a later edit or deletion; its zone version identifies the evaluated definition. The service stores latest positions, not an unbounded location history.
 
-## Assistant
-
-Set `GEO_OPENAI_API_KEY` in `.env`, then recreate the app. `GEO_ASSISTANT_MODEL` defaults to `gpt-4.1-mini`. The key remains server-side. Only an explicit assistant request sends the prompt, current fleet summary, this user's zone context and selected centre to OpenAI, with `store=false`.
-
-The assistant uses the Responses API and a strict structured schema. It has no mutation tools; its proposed centre must match a real selected device or supplied map point, and the zone must pass server validation. The operator reviews the draft and clicks Save to create it through normal owner-scoped CRUD. Only two model calls may be in flight; calls have finite deadlines and no automatic retries. Without a key the service reports unavailable and does not fabricate model answers.
-
-SDK integration, invalid drafts, private context and mutation boundaries are tested against a deterministic test provider. A live model call is a separate verification requiring a configured key.
-
 ## Tests and measurements
 
 ```sh
@@ -125,7 +115,7 @@ uv run ruff format --check
 uv run python scripts/benchmark.py --duration 900 --docker-stats --output evidence/baseline.json
 ```
 
-Tests run against real PostGIS in the separate `geo_test` database. They cover metres, boundary tolerance, high latitude, the antimeridian, variable radii, private CRUD and alerts, multiple sessions, duplicate/stale reports, intermediate zone crossings, overload rollback, stalled writers, restart watermarks, processor failure and assistant contracts.
+Tests run against real PostGIS in the separate `geo_test` database. They cover metres, boundary tolerance, high latitude, the antimeridian, variable radii, private CRUD and alerts, multiple sessions, duplicate/stale reports, intermediate zone crossings, overload rollback, stalled writers, restart watermarks and processor failure.
 
 The generator maintains 10,000 moving device states with stable IDs, realistic random drift, randomized reporting phases and a monotonic schedule. Its HTTP connector and outstanding queue are bounded. It records scheduled, attempted, accepted, rejected, dropped, retried and late reports; it does not silently reduce offered load when the server slows. `--synchronized` creates a burst, `--interval 2` offers 5,000 reports/s, and `--batch-size 100` exercises the bulk endpoint separately from the required single-report path.
 
@@ -134,5 +124,3 @@ The benchmark creates 100 private test zones, three sessions across two users, a
 The [declared acceptance policy](evidence/acceptance-policy.md) requires exact population, zero loss, at least 99% of the offered rate, bounded scheduling jitter, delivery p95 below one second and stable container memory. Reports over 100 ms late remain visible diagnostics rather than an unrealistic zero-jitter timing requirement.
 
 See [verification evidence](evidence/verification.md) for measured hardware, test results and limits. The populated spatial-plan probe is `scripts/explain.py`; it inserts its fixture inside a transaction and rolls it back. The reusable [drive-fleet skill](.agents/skills/drive-fleet/SKILL.md) preserves the local verification workflow.
-
-The GitHub Actions template is in `ci/github-actions.yml`. Activating it under `.github/workflows` requires a GitHub credential with the `workflow` scope. The publishing account currently has repository access, so the template is included without activating remote automation.

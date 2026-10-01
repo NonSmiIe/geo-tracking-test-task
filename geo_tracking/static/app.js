@@ -6,7 +6,7 @@ const requestedUser = new URLSearchParams(location.search).get('user');
 let user = requestedUser && /^[\w.-]{1,96}$/.test(requestedUser) ? requestedUser : 'alice';
 let epoch = 0, socket, connectionVersion = 0, editId = null, selectedId = null, following = false;
 let currentView = 'fleet', zonesVisible = true, alertTotal = 0, unread = 0, received = 0, rateReceived = 0;
-let fleetDirty = true, alertsDirty = false, insightLoadId = 0, zoneLoadId = 0, snapshotController, errorTimer, proposal = null;
+let fleetDirty = true, alertsDirty = false, insightLoadId = 0, zoneLoadId = 0, snapshotController, errorTimer;
 let demoPrefix = null, demoRunning = false;
 const deviceName = (id) => demoPrefix && id.startsWith(demoPrefix) ? `Машина ${id.slice(demoPrefix.length)}` : id;
 const positions = new Map(), zones = new Map(), alertFeed = [], pendingPositions = new Map();
@@ -326,24 +326,6 @@ async function loadInsights() {
   finally { if (current(version, who) && loadId === insightLoadId) $('refresh-insights').disabled = false; }
 }
 $('refresh-insights').onclick = loadInsights;
-async function checkAssistant(version, who) {
-  try {
-    const info = await api('/assistant', {}, who); if (!current(version, who)) return;
-    $('assistant-status').textContent = info.available ? 'Plan a geofence using the selected device or map centre.' : 'Connect an AI provider to enable planning suggestions. Fleet health and zone coverage work without it.';
-    $('assistant-prompt').disabled = !info.available; $('ask-assistant').disabled = !info.available;
-  } catch { if (current(version, who)) $('assistant-status').textContent = 'Planning suggestions are unavailable right now.'; }
-}
-$('assistant-form').onsubmit = async (event) => {
-  event.preventDefault(); const version = epoch, who = user, centre = map.getCenter();
-  const payload = { prompt: $('assistant-prompt').value, ...(selectedId ? { device_id: selectedId } : { latitude: centre.lat, longitude: centre.lng }) };
-  $('ask-assistant').disabled = true; $('ask-assistant').textContent = 'Thinking…';
-  try {
-    const answer = await api('/assistant', { method: 'POST', body: JSON.stringify(payload) }, who); if (!current(version, who)) return;
-    proposal = answer.proposed_zone; $('assistant-summary').textContent = answer.summary; $('assistant-answer').hidden = false; $('use-proposal').hidden = !proposal;
-  } catch (cause) { if (current(version, who)) error(cause.message); }
-  finally { if (current(version, who)) { $('ask-assistant').disabled = false; $('ask-assistant').replaceChildren(document.createTextNode('Ask assistant'), icon('spark')); } }
-};
-$('use-proposal').onclick = () => { if (!proposal) return; startEdit(); $('name').value = proposal.name; $('latitude').value = proposal.latitude; $('longitude').value = proposal.longitude; $('radius').value = proposal.radius_m; updateDraft(); map.fitBounds(draftCircle.getBounds(), { padding: [60, 60] }); };
 
 function status(state, text) {
   $('status').className = `connection ${state}`; $('status-label').textContent = text;
@@ -395,11 +377,10 @@ $('identity').onsubmit = (event) => {
   zoneLoadId++; alertTotal = 0; unread = 0; alertFeed.length = 0; pendingPositions.clear();
   $('alert-count').textContent = '0'; $('activity-badge').hidden = true; renderAlerts();
   for (const entry of zones.values()) map.removeLayer(entry.circle); zones.clear(); renderZones(); $('zone-count').textContent = '0';
-  proposal = null; $('assistant-answer').hidden = true; $('assistant-prompt').value = ''; $('assistant-prompt').disabled = true; $('ask-assistant').disabled = true; $('ask-assistant').replaceChildren(document.createTextNode('Ask assistant'), icon('spark'));
   $('insights').replaceChildren(element('p', 'Loading the latest picture…', 'view-description')); $('save-zone').disabled = false;
   $('identity-panel').hidden = true; setIdentity();
   const url = new URL(location.href); url.searchParams.set('user', user); history.replaceState({}, '', url);
-  connect(user, epoch); checkAssistant(epoch, user); if (currentView === 'brief') loadInsights();
+  connect(user, epoch); if (currentView === 'brief') loadInsights();
 };
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
@@ -416,7 +397,7 @@ setInterval(() => { $('update-rate').textContent = `${count(received - rateRecei
 async function metrics() {
   try { const data = await api('/metrics'); $('latency').textContent = data.processing_ms.p95 === undefined ? 'Processing —' : `Processing p95 ${Math.round(data.processing_ms.p95)} ms`; } catch { $('latency').textContent = 'Processing unavailable'; }
 }
-setInterval(metrics, 5000); metrics(); setIdentity(); renderZones(); renderAlerts(); renderFleet(); connect(user, epoch); checkAssistant(epoch, user);
+setInterval(metrics, 5000); metrics(); setIdentity(); renderZones(); renderAlerts(); renderFleet(); connect(user, epoch);
 
 function enterDemo(state) {
   demoPrefix = state.device_prefix;

@@ -13,7 +13,6 @@ from sqlalchemy import cast, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from geo_tracking.admission import Admission
-from geo_tracking.assistant import Assistant, AssistantRequest, selected_center
 from geo_tracking.db import DATABASE_ERRORS, Database
 from geo_tracking.demo import Demo
 from geo_tracking.events import Frame
@@ -54,7 +53,6 @@ def create_app(settings: Settings | None = None):
     metrics = Metrics()
     sessions = Sessions(settings, metrics)
     pipeline = Pipeline(db, sessions, metrics, settings)
-    assistant = Assistant(settings)
     crud_slots = asyncio.Semaphore(4)
     demo = Demo(db, pipeline, crud_slots)
 
@@ -70,7 +68,6 @@ def create_app(settings: Settings | None = None):
             await demo.close()
             await pipeline.stop()
             await sessions.close()
-            await assistant.close()
             monitor.cancel()
             await asyncio.gather(monitor, return_exceptions=True)
             await db.engine.dispose()
@@ -81,7 +78,6 @@ def create_app(settings: Settings | None = None):
     app.state.sessions = sessions
     app.state.db = db
     app.state.metrics = metrics
-    app.state.assistant = assistant
     app.state.demo = demo
 
     async def database_error(request, error):
@@ -247,23 +243,6 @@ def create_app(settings: Settings | None = None):
     @app.get("/insights")
     async def current_insights(user: User, session: Session):
         return await insights(session, user)
-
-    @app.get("/assistant")
-    async def assistant_status(user: User):
-        return {
-            "available": assistant.client is not None,
-            "model": assistant.model,
-            "mutates_data": False,
-        }
-
-    @app.post("/assistant")
-    async def ask_assistant(payload: AssistantRequest, user: User):
-        if assistant.client is None:
-            raise HTTPException(503, "assistant_not_configured")
-        async with crud_slots, db.sessions() as session:
-            context = await insights(session, user)
-            context["selected_center"] = await selected_center(session, payload)
-        return await assistant.propose(payload, context)
 
     @app.get("/health/live")
     async def live():
