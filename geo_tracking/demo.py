@@ -94,7 +94,7 @@ class Demo:
                 .values(
                     id=state["zone_id"],
                     user_id=user_id,
-                    name="Демо: склад",
+                    name="Demo depot",
                     center=center,
                     radius_m=RADIUS,
                     active=True,

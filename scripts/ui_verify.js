@@ -1,6 +1,6 @@
 async (page) => {
   const origin = 'http://127.0.0.1:8097';
-  const evidence = process.env.FLEET_EVIDENCE_DIR || './evidence/ui/';
+  const evidence = globalThis.process?.env?.FLEET_EVIDENCE_DIR ?? 'evidence/ui/';
   const run = Date.now().toString(36);
   const owner = `ui-${run}`, other = `other-${run}`, device = `ui-micro-${run}`;
   const results = { utc: new Date().toISOString(), mode: 'actual served files, no source route overlay', run };

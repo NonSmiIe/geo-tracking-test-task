@@ -8,7 +8,7 @@ let epoch = 0, socket, connectionVersion = 0, editId = null, selectedId = null, 
 let currentView = 'fleet', zonesVisible = true, alertTotal = 0, unread = 0, received = 0, rateReceived = 0;
 let fleetDirty = true, alertsDirty = false, insightLoadId = 0, zoneLoadId = 0, snapshotController, errorTimer;
 let demoPrefix = null, demoRunning = false;
-const deviceName = (id) => demoPrefix && id.startsWith(demoPrefix) ? `Машина ${id.slice(demoPrefix.length)}` : id;
+const deviceName = (id) => demoPrefix && id.startsWith(demoPrefix) ? `Truck ${id.slice(demoPrefix.length)}` : id;
 const positions = new Map(), zones = new Map(), alertFeed = new Map(), pendingPositions = new Map();
 const EPISODE_GAP_MS = 30000, FEED_LIMIT = 80;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -255,8 +255,7 @@ function receiveAlerts(items) {
 setInterval(() => { if (alertsDirty && currentView === 'activity') renderAlerts(); }, 350);
 const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 function alertText(group) {
-  const zoneName = zones.get(group.zone_id)?.zone.name || (demoPrefix ? 'Склад' : 'geofence');
-  if (demoPrefix) return [`${deviceName(group.device_id)} въехала в зону «${zoneName}» · ${clock(group.first)}`, `внутри с ${clock(group.first)} · ${count(group.reports)} отчётов`];
+  const zoneName = zones.get(group.zone_id)?.zone.name || (demoPrefix ? 'Depot' : 'geofence');
   return [`${deviceName(group.device_id)} entered ${zoneName} · ${clock(group.first)}`, `inside since ${clock(group.first)} · ${count(group.reports)} report${group.reports === 1 ? '' : 's'}`];
 }
 function renderAlerts() {
@@ -467,10 +466,10 @@ function enterDemo(state) {
 }
 function demoState(state) {
   demoRunning = state.running;
-  $('demo-toggle').textContent = state.running ? '■ Остановить демо' : '▶ Запустить демо';
+  $('demo-toggle').textContent = state.running ? '■ Stop demo' : '▶ Start demo';
   $('demo-status').textContent = state.running
-    ? 'Демо идёт: машины обновляются каждую секунду. Уведомления — в списке ниже. Автостоп через 2 минуты.'
-    : demoPrefix ? 'Демо остановлено. Машины замерли. Нажми запуск, чтобы повторить.' : 'Нажми кнопку — всё начнётся автоматически.';
+    ? 'Running: trucks report every second, and each entry appears in Activity. Stops by itself after 2 minutes.'
+    : demoPrefix ? 'Stopped. The trucks hold their last positions. Start again to replay.' : 'One click starts it; nothing to set up.';
 }
 $('demo-toggle').onclick = async () => {
   const who = user, version = epoch;
@@ -493,7 +492,8 @@ async function refreshDemo() {
   try {
     const state = await api('/demo', {}, who);
     if (!current(version, who)) return;
+    if (state.running && !demoPrefix) { enterDemo(state); await loadZones(version, who); }
     demoState(state);
-  } catch (cause) { if (current(version, who)) $('demo-status').textContent = 'Не удалось проверить демо. Попробуй кнопку запуска.'; }
+  } catch (cause) { if (current(version, who)) $('demo-status').textContent = 'Could not read the demo state. Try the start button.'; }
 }
 setInterval(refreshDemo, 2000); refreshDemo();
