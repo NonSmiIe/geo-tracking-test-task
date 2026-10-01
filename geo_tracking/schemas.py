@@ -13,7 +13,7 @@ IDENTIFIER = r"^[\w.-]+$"
 Identifier = Annotated[str, Field(min_length=1, max_length=96, pattern=IDENTIFIER)]
 
 EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
-CLOCK_SKEW = timedelta(minutes=5)
+CLOCK_SKEW = timedelta(seconds=30)
 
 
 def microseconds(value: datetime) -> int:
@@ -32,8 +32,7 @@ class Report(msgspec.Struct, forbid_unknown_fields=True, frozen=True):
             raise ValueError("timestamp is in the future")
 
     def record(self) -> list[Any]:
-        stamp = min(self.timestamp, datetime.now(UTC))
-        return [self.device_id, self.latitude, self.longitude, microseconds(stamp)]
+        return [self.device_id, self.latitude, self.longitude, microseconds(self.timestamp)]
 
 
 class Flush(msgspec.Struct, tag_field="type", tag="flush", forbid_unknown_fields=True):

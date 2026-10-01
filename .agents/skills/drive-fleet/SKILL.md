@@ -33,6 +33,8 @@ Run from the repository root (the directory with `docker-compose.yml`). The app 
 
 `.agents/skills/drive-fleet/scripts/fault-campaign.sh` runs eight 100k × 180 s scenarios: restarts of NATS, Kafka, PostgreSQL and the edge; a processor kill and a processor pause (a zombie); an api kill and a gateway kill. Each fault fires at 60 s, and a recovery at 90 s where one is needed. Container names come from `docker compose ps`; replicas are not numbered 1..N after scaling, so check the targets exist before a run. It takes about 45 min, so run it in the background with a long timeout. Fault runs are judged by `evidence/acceptance-policy-fault-v1.md`: durability from PostgreSQL rows, not counters.
 
+When PostgreSQL does not hold a device's newest report, the benchmark keeps the rows and writes `<output>.mismatch.json` (device, stored and expected timestamp, partition). Before blaming the processor, split the pipeline at Kafka: `scripts/kafka-latest.py <prefix> <start_ms> <end_ms>` prints the newest timestamp per device in that window, with partition and offset. Run it inside the network: `docker compose run --rm -T --no-deps -v "$PWD/.agents/skills/drive-fleet/scripts:/scan" --entrypoint python tests /scan/kafka-latest.py …`. PostgreSQL equal to Kafka means ingest changed the data; Kafka equal to the generator means the processor lost it.
+
 ## Reading a benchmark
 
 The process exits 1 unless `acceptance_passed`. When it fails, read in this order:

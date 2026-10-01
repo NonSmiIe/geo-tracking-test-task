@@ -2,6 +2,7 @@ import asyncio
 import logging
 import signal
 from collections import defaultdict
+from dataclasses import dataclass, field
 from time import monotonic, time
 from typing import Any
 
@@ -42,6 +43,14 @@ class LaneStalled(Exception):
     pass
 
 
+@dataclass(eq=False)
+class Lane:
+    partition: TopicPartition
+    polled: float = field(default_factory=time)
+    leaving: asyncio.Event = field(default_factory=asyncio.Event)
+    task: asyncio.Task[None] = field(init=False)
+
+
 def frame(kind: str, items: list[Any]) -> bytes:
     return orjson.dumps({"type": kind, "items": items})
 
@@ -58,9 +67,7 @@ class Processor(ConsumerRebalanceListener):
         self.settings, self.db, self.nats, self.consumer = settings, db, nats, consumer
         self.topic_id = topic_id
         self.subjects = Subjects(settings.subject_prefix)
-        self.polls: dict[TopicPartition, float] = {}
-        self.lanes: dict[TopicPartition, asyncio.Task[None]] = {}
-        self.leaving: dict[TopicPartition, asyncio.Event] = {}
+        self.lanes: dict[TopicPartition, Lane] = {}
         self.transactions = asyncio.Semaphore(settings.processor_transactions)
 
     def unique(self, records: list[Record], seen: set[tuple[str, int]]) -> list[Record]:
@@ -150,16 +157,14 @@ class Processor(ConsumerRebalanceListener):
         stall = self.settings.publish_deadline_seconds + 10
         while not stopping.is_set():
             now = time()
-            oldest = min(self.polls.values(), default=now)
+            oldest = min((lane.polled for lane in self.lanes.values()), default=now)
             PARTITIONS.set(len(self.lanes))
             if now - oldest > stall:
                 raise LaneStalled(f"a partition lane has not polled Kafka for {now - oldest:.0f} s")
             for partition, lane in tuple(self.lanes.items()):
-                if lane.done():
+                if lane.task.done():
                     del self.lanes[partition]
-                    self.polls.pop(partition, None)
-                    self.leaving.pop(partition, None)
-                    lane.result()
+                    lane.task.result()
             await asyncio.sleep(0.1)
         await self.on_partitions_revoked(set(self.lanes))
 
@@ -168,35 +173,33 @@ class Processor(ConsumerRebalanceListener):
             "partitions assigned", extra={"partitions": sorted(p.partition for p in assigned)}
         )
         for partition in assigned - self.lanes.keys():
-            self.polls[partition] = time()
-            self.leaving[partition] = asyncio.Event()
-            self.lanes[partition] = asyncio.create_task(self.lane(partition))
+            lane = self.lanes[partition] = Lane(partition)
+            lane.task = asyncio.create_task(self.drive(lane))
 
     async def on_partitions_revoked(self, revoked: set[TopicPartition]) -> None:
         logger.info(
             "partitions revoked", extra={"partitions": sorted(p.partition for p in revoked)}
         )
-        for partition in revoked:
-            self.polls.pop(partition, None)
-            if partition in self.leaving:
-                self.leaving.pop(partition).set()
-        leaving = [self.lanes.pop(partition) for partition in revoked if partition in self.lanes]
-        if not leaving:
+        lanes = [self.lanes.pop(partition) for partition in revoked & self.lanes.keys()]
+        if not lanes:
             return
+        for lane in lanes:
+            lane.leaving.set()
+        leaving = [lane.task for lane in lanes]
         _, unfinished = await asyncio.wait(leaving, timeout=self.settings.publish_deadline_seconds)
-        for lane in unfinished:
-            lane.cancel()
+        for task in unfinished:
+            task.cancel()
         await asyncio.gather(*leaving, return_exceptions=True)
 
-    async def lane(self, partition: TopicPartition) -> None:
-        leaving = self.leaving[partition]
-        while not leaving.is_set():
+    async def drive(self, lane: Lane) -> None:
+        partition = lane.partition
+        while not lane.leaving.is_set():
             fetched = await self.consumer.getmany(
                 partition,
                 timeout_ms=self.settings.processor_poll_ms,
                 max_records=self.settings.processor_batch,
             )
-            self.polls[partition] = time()
+            lane.polled = time()
             items = fetched.get(partition)
             if not items:
                 continue

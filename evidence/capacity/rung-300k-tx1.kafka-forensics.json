@@ -1,0 +1,19 @@
+{
+  "run": "evidence/capacity/rung-300k-tx1.json",
+  "prefix": "bench-61522e99",
+  "method": "scan of topic reports, 24 partitions, 2026-10-01T23:38:20Z..23:45:00Z, newest timestamp per device",
+  "kafka": {
+    "records": 18000000,
+    "devices": 300000,
+    "timestamp_sum": "537269464945702869308"
+  },
+  "postgresql": {
+    "devices": 300000,
+    "timestamp_sum": "537269464945702869308"
+  },
+  "generator": {
+    "devices": 300000,
+    "timestamp_sum": "537269464947186726827"
+  },
+  "finding": "PostgreSQL equals Kafka; the gap to the generator was written at ingest by the receive-time clamp in Report.record()"
+}

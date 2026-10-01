@@ -234,9 +234,11 @@ def test_a_joining_processor_takes_partitions_without_losing_a_report(stack, htt
     socket.close()
 
 
-def test_a_report_from_the_near_future_is_recorded_at_receive_time(stack, http) -> None:
-    ahead = (datetime.now(UTC) + timedelta(minutes=3)).isoformat()
-    assert http.post("/locations", json=report("ahead", timestamp=ahead)).status_code == 202
-    assert wait_for(lambda: latest(http, "ahead") is not None)
-    stored = datetime.fromisoformat(latest(http, "ahead")["timestamp"])
-    assert stored <= datetime.now(UTC) + timedelta(seconds=1)
+def test_timestamps_are_kept_exactly_and_bounded_ahead_of_the_server(stack, http) -> None:
+    near = datetime.now(UTC) + timedelta(seconds=10)
+    beyond = datetime.now(UTC) + timedelta(seconds=60)
+    rejected = http.post("/locations", json=report("beyond", timestamp=beyond.isoformat()))
+    accepted = http.post("/locations", json=report("near", timestamp=near.isoformat()))
+    assert (rejected.status_code, accepted.status_code) == (422, 202)
+    assert wait_for(lambda: latest(http, "near") is not None)
+    assert datetime.fromisoformat(latest(http, "near")["timestamp"]) == near

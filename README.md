@@ -78,7 +78,7 @@ After commit the processor publishes to NATS, flushes, and only then commits the
 
 ## Semantics
 
-- A sample is identified by `(device_id, timestamp)`. Timestamps must carry a time zone and are normalized to UTC with microsecond precision. A timestamp more than 5 minutes in the future is rejected with `422`, so a bad clock can hold a device's watermark ahead by at most that much.
+- A sample is identified by `(device_id, timestamp)`. Timestamps must carry a time zone and are normalized to UTC with microsecond precision. A timestamp more than 30 seconds ahead of the server is rejected with `422`; every accepted timestamp is stored exactly as sent, so a bad clock can hold a device's watermark ahead by at most 30 seconds.
 - Every fresh sample inside an active zone produces an alert for that zone, including repeated reports from a device already inside.
 - An HTTP `202` or a socket ack means the report is durable in Kafka; it says nothing about browser delivery. Live events are ephemeral to a browser: a dashboard that is disconnected while they are published misses them, and reconnecting restores the latest map, not missed alerts.
 - Zone edits take effect from the next processed batch. An alert carries the `zone_version` it was evaluated against.
@@ -230,7 +230,7 @@ No scenario lost an acknowledged report. Re-emitted events are the replay of bat
 
 ## Limits
 
-- **Ingestion is unauthenticated.** Any client that reaches `/ingest` or `/locations` can report any `device_id`, so positions and alerts are only as trustworthy as the network in front of the edge. A real deployment needs per-device credentials (mTLS or a signed token bound to `device_id`), a device-to-owner table, and a check of each report's `device_id` against the credential. What is in place limits the damage: a timestamp ahead of the server is recorded at receive time, so a spoofed future report cannot freeze a device; zones cap radius and overlap; the edge rate-limits per user; gateways cap dashboards per user and bytes per replica.
+- **Ingestion is unauthenticated.** Any client that reaches `/ingest` or `/locations` can report any `device_id`, so positions and alerts are only as trustworthy as the network in front of the edge. A real deployment needs per-device credentials (mTLS or a signed token bound to `device_id`), a device-to-owner table, and a check of each report's `device_id` against the credential. What is in place limits the damage: a spoofed future report can freeze a device's watermark for at most 30 seconds; zones cap radius and overlap; the edge rate-limits per user; gateways cap dashboards per user and bytes per replica.
 
 - One Kafka broker, one PostgreSQL and one NATS server: the Compose file demonstrates scale-out of api, gateway and processors, not broker or database replication (see [Scaling out](#scaling-out)).
 - At-least-once delivery: a processor rebalance can repeat a live frame or alert.
