@@ -1,95 +1,160 @@
 import asyncio
 import math
-from datetime import UTC, datetime
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import HTTPException
 from geoalchemy2 import WKTElement
-from sqlalchemy import select
+from sqlalchemy import delete, func, select, text
+from sqlalchemy.dialects.postgresql import insert
 
-from geo_tracking.models import Zone
-from geo_tracking.pipeline import Failure
+from geo_tracking.db import Database
+from geo_tracking.ingest import Ingest
+from geo_tracking.models import DemoRun, Zone
 from geo_tracking.schemas import Report
+from geo_tracking.settings import Settings
+
+LATITUDE, LONGITUDE, RADIUS = 56.9496, 24.1052, 250
 
 
 class Demo:
-    def __init__(self, db, pipeline, slots):
-        self.db, self.pipeline, self.slots = db, pipeline, slots
+    def __init__(
+        self,
+        settings: Settings,
+        db: Database,
+        ingest: Ingest,
+        zones_changed: Callable[[str], Awaitable[None]],
+    ):
+        self.settings, self.db, self.ingest, self.zones_changed = (
+            settings,
+            db,
+            ingest,
+            zones_changed,
+        )
         self.tasks: dict[str, asyncio.Task] = {}
-        self.lock = asyncio.Lock()
 
-    def status(self, user):
-        zone_id = uuid5(NAMESPACE_URL, f"fleetline-demo:{user}")
+    def describe(self, user_id: str, running: bool) -> dict:
+        zone_id = uuid5(NAMESPACE_URL, f"fleetline-demo:{user_id}")
         return {
-            "running": user in self.tasks,
+            "running": running,
             "device_prefix": f"demo-{zone_id.hex[:12]}-",
             "zone_id": str(zone_id),
-            "latitude": 56.9496,
-            "longitude": 24.1052,
-            "radius_m": 250,
-            "devices": min(6, self.pipeline.settings.batch_reports),
-            "duration_seconds": 120,
+            "latitude": LATITUDE,
+            "longitude": LONGITUDE,
+            "radius_m": RADIUS,
+            "devices": self.settings.demo_devices,
+            "duration_seconds": self.settings.demo_seconds,
         }
 
-    async def start(self, user):
-        async with self.lock:
-            if user in self.tasks:
-                return self.status(user)
-            if len(self.tasks) >= 4:
-                raise HTTPException(429, "demo_capacity")
-            state = self.status(user)
-            async with self.slots, self.db.sessions() as session, session.begin():
-                zone = (
-                    await session.execute(
-                        select(Zone).where(
-                            Zone.id == uuid5(NAMESPACE_URL, f"fleetline-demo:{user}"),
-                            Zone.user_id == user,
-                        )
-                    )
-                ).scalar_one_or_none()
-                if zone is None:
-                    zone = Zone(
-                        id=uuid5(NAMESPACE_URL, f"fleetline-demo:{user}"),
-                        user_id=user,
-                        name="Демо: склад",
-                        version=1,
-                    )
-                    session.add(zone)
-                else:
-                    zone.version += 1
-                zone.center = WKTElement("POINT(24.1052 56.9496)", srid=4326)
-                zone.radius_m = 250
-                zone.active = True
-            self.tasks[user] = asyncio.create_task(self.move(user, state))
-            return self.status(user)
+    def horizon(self) -> datetime:
+        return datetime.now(UTC) - timedelta(seconds=self.settings.demo_seconds)
 
-    async def move(self, user, state):
-        try:
-            for tick in range(120):
-                reports = [
-                    Report(
-                        device_id=state["device_prefix"] + str(index + 1),
-                        latitude=state["latitude"] + math.sin(tick * math.pi / 15 + index) * 0.003,
-                        longitude=state["longitude"]
-                        + math.cos(tick * math.pi / 15 + index) * 0.0015,
-                        timestamp=datetime.now(UTC),
+    async def status(self, user_id: str) -> dict:
+        async with self.db.sessions() as session:
+            started = await session.scalar(
+                select(DemoRun.started_at).where(
+                    DemoRun.user_id == user_id, DemoRun.started_at > self.horizon()
+                )
+            )
+        return self.describe(user_id, started is not None)
+
+    async def start(self, user_id: str) -> dict:
+        state = self.describe(user_id, True)
+        async with self.db.sessions() as session, session.begin():
+            await session.execute(text("SELECT pg_advisory_xact_lock(hashtext('demo_runs'))"))
+            running = await session.scalar(
+                select(DemoRun.started_at).where(
+                    DemoRun.user_id == user_id, DemoRun.started_at > self.horizon()
+                )
+            )
+            if running is not None:
+                return state
+            others = await session.scalar(
+                select(func.count()).where(
+                    DemoRun.user_id != user_id, DemoRun.started_at > self.horizon()
+                )
+            )
+            if others >= self.settings.demo_limit:
+                raise HTTPException(429, "demo_capacity")
+            started = datetime.now(UTC)
+            await session.execute(
+                insert(DemoRun)
+                .values(user_id=user_id, started_at=started)
+                .on_conflict_do_update(
+                    index_elements=[DemoRun.user_id], set_={"started_at": started}
+                )
+            )
+            center = WKTElement(f"POINT({LONGITUDE} {LATITUDE})", srid=4326)
+            await session.execute(
+                insert(Zone)
+                .values(
+                    id=state["zone_id"],
+                    user_id=user_id,
+                    name="Демо: склад",
+                    center=center,
+                    radius_m=RADIUS,
+                    active=True,
+                    version=1,
+                )
+                .on_conflict_do_update(
+                    index_elements=[Zone.id],
+                    set_={
+                        "center": center,
+                        "radius_m": RADIUS,
+                        "active": True,
+                        "version": Zone.version + 1,
+                    },
+                )
+            )
+        self.tasks[user_id] = asyncio.create_task(self.move(user_id, started, state))
+        await self.zones_changed(user_id)
+        return state
+
+    async def current(self, user_id: str, started: datetime) -> bool:
+        async with self.db.sessions() as session:
+            return (
+                await session.scalar(
+                    select(DemoRun.user_id).where(
+                        DemoRun.user_id == user_id, DemoRun.started_at == started
                     )
-                    for index in range(state["devices"])
-                ]
-                if isinstance(await self.pipeline.submit(reports), Failure):
-                    break
+                )
+                is not None
+            )
+
+    async def move(self, user_id: str, started: datetime, state: dict) -> None:
+        try:
+            for tick in range(self.settings.demo_seconds):
+                if not await self.current(user_id, started):
+                    return
+                phase = tick * math.pi / 15
+                await self.ingest.publish(
+                    [
+                        Report(
+                            device_id=state["device_prefix"] + str(index + 1),
+                            latitude=LATITUDE + math.sin(phase + index) * 0.003,
+                            longitude=LONGITUDE + math.cos(phase + index) * 0.0015,
+                            timestamp=datetime.now(UTC),
+                        )
+                        for index in range(state["devices"])
+                    ]
+                )
                 await asyncio.sleep(1)
         finally:
-            self.tasks.pop(user, None)
+            if self.tasks.get(user_id) is asyncio.current_task():
+                del self.tasks[user_id]
 
-    async def stop(self, user):
-        async with self.lock:
-            task = self.tasks.get(user)
-            if task:
-                task.cancel()
-                await asyncio.gather(task, return_exceptions=True)
-            return self.status(user)
+    async def stop(self, user_id: str) -> dict:
+        async with self.db.sessions() as session, session.begin():
+            await session.execute(delete(DemoRun).where(DemoRun.user_id == user_id))
+        task = self.tasks.get(user_id)
+        if task:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        return self.describe(user_id, False)
 
-    async def close(self):
-        for user in tuple(self.tasks):
-            await self.stop(user)
+    async def close(self) -> None:
+        tasks = tuple(self.tasks.values())
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)

@@ -1,53 +1,120 @@
 name: geo-tracking-test-task
+x-app: &app
+  build: .
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  environment: &env
+    GEO_DATABASE_URL: postgresql+asyncpg://geo:${POSTGRES_PASSWORD:-local-demo-password}@db:5432/geo
+    GEO_KAFKA_BOOTSTRAP: kafka:9092
+    GEO_NATS_URL: nats://nats:4222
 services:
   db:
     build:
       context: .
       dockerfile: Dockerfile.postgis
+    command: [postgres, -c, shared_buffers=256MB, -c, max_connections=200]
     environment:
       POSTGRES_DB: geo
       POSTGRES_USER: geo
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-demo-password}
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: [CMD-SHELL, "pg_isready -U geo -d geo"]
       interval: 2s
       timeout: 2s
       retries: 30
-    mem_limit: 1g
-    cpus: 2
-  app:
-    build: .
+    mem_limit: 1536m
+    cpus: 3
+  kafka:
+    image: apache/kafka:4.1.0
     environment:
-      GEO_DATABASE_URL: postgresql+asyncpg://geo:${POSTGRES_PASSWORD:-local-demo-password}@db:5432/geo
-    ports:
-      - "127.0.0.1:${APP_PORT:-8097}:8000"
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 24
+      KAFKA_LOG_RETENTION_MS: 1800000
+      KAFKA_LOG_SEGMENT_BYTES: 134217728
+      KAFKA_HEAP_OPTS: -Xms768m -Xmx768m
+    volumes:
+      - kafkadata:/var/lib/kafka/data
+    healthcheck:
+      test: [CMD-SHELL, "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 10s
+    mem_limit: 1536m
+    cpus: 2
+  nats:
+    image: nats:2.11.9-alpine
+    command: [-m, "8222"]
+    healthcheck:
+      test: [CMD, wget, -qO-, http://localhost:8222/healthz]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    mem_limit: 256m
+    cpus: 1
+  migrate:
+    <<: *app
+    command: [alembic, upgrade, head]
     depends_on:
       db:
         condition: service_healthy
-    read_only: true
-    tmpfs:
-      - /tmp
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    mem_limit: 512m
-    cpus: 2
+  api:
+    <<: *app
+    ports:
+      - "127.0.0.1:${APP_PORT:-8097}:8000"
+    depends_on: &ready
+      migrate:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
     healthcheck:
-      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)"]
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
       interval: 5s
-      timeout: 3s
-      retries: 10
+      timeout: 4s
+      retries: 20
+    mem_limit: 1536m
+    cpus: 4
+  processor:
+    <<: *app
+    command: [python, -m, geo_tracking.processor]
+    depends_on: *ready
+    deploy:
+      replicas: ${PROCESSORS:-4}
+    mem_limit: 384m
+    cpus: 1
   tests:
     build:
       context: .
       dockerfile: Dockerfile.test
     profiles: [test]
     environment:
+      <<: *env
       GEO_DATABASE_URL: postgresql+asyncpg://geo:${POSTGRES_PASSWORD:-local-demo-password}@db:5432/geo_test
     depends_on:
       db:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
     command: [sh, -c, "python -m scripts.test_database && alembic upgrade head && python -m pytest -q"]
 volumes:
-  postgres-data:
+  pgdata:
+  kafkadata:

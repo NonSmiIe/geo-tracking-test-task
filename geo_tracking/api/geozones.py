@@ -1,0 +1,120 @@
+from uuid import UUID
+
+from fastapi import APIRouter, HTTPException, Query
+from geoalchemy2 import Geometry, WKTElement
+from sqlalchemy import Select, cast, func, select, text
+
+from geo_tracking.api.services import ServicesDep, Session, User, zones_changed
+from geo_tracking.models import Zone
+from geo_tracking.schemas import ZoneCreate, ZoneUpdate
+
+router = APIRouter(prefix="/geozones", tags=["geozones"])
+
+
+def zone_query() -> Select:
+    point = cast(Zone.center, Geometry("POINT", srid=4326))
+    return select(
+        Zone.id,
+        Zone.name,
+        Zone.radius_m,
+        Zone.active,
+        Zone.version,
+        func.ST_Y(point).label("latitude"),
+        func.ST_X(point).label("longitude"),
+    )
+
+
+def center(latitude: float, longitude: float) -> WKTElement:
+    return WKTElement(f"POINT({longitude} {latitude})", srid=4326)
+
+
+async def owned(session: Session, zone_id: UUID, user: str) -> Zone:
+    zone = (
+        await session.execute(
+            select(Zone).where(Zone.id == zone_id, Zone.user_id == user).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if zone is None:
+        raise HTTPException(404, "zone_not_found")
+    return zone
+
+
+async def present(session: Session, zone_id: UUID) -> dict:
+    return dict((await session.execute(zone_query().where(Zone.id == zone_id))).mappings().one())
+
+
+@router.post("", status_code=201)
+async def create_zone(
+    payload: ZoneCreate, user: User, session: Session, services: ServicesDep
+) -> dict:
+    async with session.begin():
+        await session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:user))"), {"user": user})
+        total = await session.scalar(select(func.count()).where(Zone.user_id == user))
+        if total >= services.settings.max_zones_per_user:
+            raise HTTPException(409, "zone_quota_exceeded")
+        zone = Zone(
+            user_id=user,
+            name=payload.name,
+            radius_m=payload.radius_m,
+            active=payload.active,
+            center=center(payload.latitude, payload.longitude),
+        )
+        session.add(zone)
+        await session.flush()
+        row = await present(session, zone.id)
+    await zones_changed(services.nats, services.subjects, user)
+    return row
+
+
+@router.get("")
+async def list_zones(
+    user: User,
+    session: Session,
+    after: UUID | None = None,
+    limit: int = Query(100, ge=1, le=1000),
+) -> dict:
+    query = zone_query().where(Zone.user_id == user).order_by(Zone.id).limit(limit + 1)
+    if after:
+        query = query.where(Zone.id > after)
+    rows = (await session.execute(query)).mappings().all()
+    return {
+        "items": [dict(row) for row in rows[:limit]],
+        "next_cursor": str(rows[limit - 1]["id"]) if len(rows) > limit else None,
+    }
+
+
+@router.get("/{zone_id}")
+async def get_zone(zone_id: UUID, user: User, session: Session) -> dict:
+    row = (
+        (await session.execute(zone_query().where(Zone.id == zone_id, Zone.user_id == user)))
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        raise HTTPException(404, "zone_not_found")
+    return dict(row)
+
+
+@router.patch("/{zone_id}")
+async def update_zone(
+    zone_id: UUID, payload: ZoneUpdate, user: User, session: Session, services: ServicesDep
+) -> dict:
+    async with session.begin():
+        zone = await owned(session, zone_id, user)
+        values = payload.model_dump(exclude_unset=True)
+        if "latitude" in values:
+            zone.center = center(values.pop("latitude"), values.pop("longitude"))
+        for key, value in values.items():
+            setattr(zone, key, value)
+        zone.version += 1
+        await session.flush()
+        row = await present(session, zone.id)
+    await zones_changed(services.nats, services.subjects, user)
+    return row
+
+
+@router.delete("/{zone_id}", status_code=204)
+async def delete_zone(zone_id: UUID, user: User, session: Session, services: ServicesDep) -> None:
+    async with session.begin():
+        await session.delete(await owned(session, zone_id, user))
+    await zones_changed(services.nats, services.subjects, user)

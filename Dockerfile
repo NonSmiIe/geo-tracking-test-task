@@ -12,4 +12,4 @@ RUN useradd --uid 10001 --no-create-home app
 USER 10001
 ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 8000
-CMD ["sh", "-c", "alembic upgrade head && exec python -m geo_tracking"]
+CMD ["python", "-m", "geo_tracking"]
