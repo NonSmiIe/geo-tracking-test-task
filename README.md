@@ -202,6 +202,24 @@ Apple M4 Pro; the Docker VM has 14 CPUs and 8 GB, shared with unrelated containe
 
 **The ceiling on this laptop is between 300,000 and 500,000 devices, and it is the machine, not a tier.** At 500k the server containers used 10.8 cores and the generator plus observers most of the rest of 14. The host was 99% busy. An idle-database probe puts the upsert at about 8 µs per row (16 ms per 2,000), but under that contention it took 143 ms. Going further needs more hardware: a second machine for the load, or the per-partition shards described in [Scaling out](#scaling-out). Two 300k runs are not in the table because they measured the harness, not the service: one on a table holding 2M rows left by earlier runs, which made it I/O-bound ([kept](evidence/capacity/rung-300k-p8-progress.json)), and one where a Kafka-probing readiness check took every saturated api replica out of rotation ([kept](evidence/capacity/rung-300k-h5.json); that check is now deleted). In every passed run all four sessions reconciled exactly, including the probe viewport, which received precisely the positions in its subscribed tiles. The earlier single-process design's 10,000-device runs remain in `evidence/` under [policy v2](evidence/acceptance-policy.md).
 
+### Failure campaign
+
+Each scenario runs 100,000 devices for 180 s and breaks one container at 60 s. It is judged by [fault policy v1/v2](evidence/acceptance-policy-fault-v2.md), declared before the runs. Every acknowledged report must end up acknowledged and in PostgreSQL, by count and timestamp sum. Lag must drain. A dashboard that was closed or told to resync must resume, and one that was neither must have missed nothing.
+
+| Scenario | Devices resent | Delivery p95 | Dashboards | Verdict |
+| --- | ---: | ---: | --- | --- |
+| NATS restart | 0 | 143 ms | stayed open and silently missed events | [failed](evidence/faults/s1-nats-restart.json) |
+| NATS restart, gateway sends `resync` | 0 | 165 ms | all four resynced at 60.9 s and resumed | [passed](evidence/faults/s1-nats-restart-resync.json) |
+| Kafka restart | 201,578 | 8,973 ms | open, nothing missed | [passed](evidence/faults/s2-kafka-restart.json) |
+| Processor SIGKILL, restarted at 90 s | 0 | 227 ms | open; 648 events re-emitted by replay | [passed](evidence/faults/s3-processor-kill.json) |
+| Processor paused 30 s (zombie) | 0 | 201 ms | open; 805 re-emitted | [passed](evidence/faults/s4-processor-pause.json) |
+| PostgreSQL restart | 0 | 233 ms | open, nothing missed | [passed](evidence/faults/s5-db-restart.json) |
+| api replica SIGKILL | 702 | 184 ms | open, nothing missed | [passed](evidence/faults/s6-api-kill.json) |
+| gateway replica SIGKILL | 0 | 190 ms | the one on it reconnected and resumed | [passed](evidence/faults/s7-gateway-kill.json) |
+| edge restart | 3,567 | 156 ms | all reconnected and resumed | [passed](evidence/faults/s8-edge-restart.json) |
+
+No scenario lost an acknowledged report. Re-emitted events are the replay of batches committed but not yet offset-committed, so delivery is at least once.
+
 ## Limits
 
 - One Kafka broker, one PostgreSQL and one NATS server: the Compose file demonstrates scale-out of api, gateway and processors, not broker or database replication (see [Scaling out](#scaling-out)).
