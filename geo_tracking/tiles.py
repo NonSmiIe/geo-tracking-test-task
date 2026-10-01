@@ -38,6 +38,8 @@ def viewport_subjects(
                 break
             tiles.update((x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 + 1))
         else:
+            if len(tiles) == 1 << (2 * level):
+                return {f"{prefix}.pos.>"}
             if len(tiles) <= limit:
                 suffix = [] if level == TILE_LEVEL else [">"]
                 return {".".join([prefix, "pos", *quadkey(x, y, level), *suffix]) for x, y in tiles}

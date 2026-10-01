@@ -123,9 +123,7 @@ def consumer(settings: Settings) -> AIOKafkaConsumer:
     )
 
 
-async def main() -> None:
-    logging.basicConfig(level=logging.INFO)
-    settings = Settings()
+async def serve(settings: Settings, assigned: asyncio.Event | None = None) -> None:
     await ensure_topic(settings)
     db = Database(settings, pool_size=2)
     nats = await connect_nats(settings)
@@ -134,10 +132,17 @@ async def main() -> None:
     processor = Processor(settings, db, nats, kafka)
     responder = await serve_metrics(nats, processor.subjects, processor.metrics.snapshot)
     monitor = asyncio.create_task(monitor_loop(processor.metrics))
+    running = asyncio.create_task(processor.run())
     try:
-        await processor.run()
+        if assigned is not None:
+            while not kafka.assignment() and not running.done():  # noqa: ASYNC110
+                await asyncio.sleep(0.05)
+            assigned.set()
+        await running
     finally:
+        running.cancel()
         monitor.cancel()
+        await asyncio.gather(running, monitor, return_exceptions=True)
         await responder.unsubscribe()
         await kafka.stop()
         await nats.drain()
@@ -145,4 +150,5 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(serve(Settings()))

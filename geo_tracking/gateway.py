@@ -15,6 +15,8 @@ from geo_tracking.schemas import ViewportAdapter
 from geo_tracking.settings import Settings
 from geo_tracking.tiles import viewport_subjects
 
+SUBSCRIBED = b'{"type":"subscribed"}'
+
 
 class Connection:
     def __init__(self, user_id: str, socket: WebSocket, settings: Settings):
@@ -128,6 +130,7 @@ class Gateway:
                 connection.reason = "invalid_message"
                 return
             await self.route(connection, subjects)
+            connection.enqueue(SUBSCRIBED)
 
     async def serve(self, socket: WebSocket, user_id: str) -> None:
         if len(self.connections) + self.opening >= self.settings.max_connections:
@@ -172,7 +175,7 @@ class Gateway:
                     ),
                     0.5,
                 )
-            except (TimeoutError, RuntimeError, OSError):
+            except (TimeoutError, RuntimeError, OSError, WebSocketDisconnect):
                 pass
 
     def close(self) -> None:
