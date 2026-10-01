@@ -152,7 +152,7 @@ Apple M4 Pro, Docker with 14 CPUs and 8 GB shared by the stack, the generator an
 | 25,000 · 300 s | 4,999 | 1,500,000 / 1,500,000 | 28 / 65 / 135 ms | 156% | 4 × 19% | [passed](evidence/scaling-25k.json) |
 | 50,000 · 300 s | 9,996 | 3,000,000 / 3,000,000 | 29 / 74 / 219 ms | 200% | 4 × 20% | [passed](evidence/scaling-50k.json) |
 | 100,000 · 300 s | 19,992 | 6,000,000 / 6,000,000 | 41 / 196 / 422 ms | 234% | 4 × 19% | [passed](evidence/scaling-100k.json) |
-| 100,000 · 900 s | | | | | | running |
+| 100,000 · 900 s | 19,998 | 18,000,000 / 18,000,000 | 41 / 190 / 527 ms | 232% | 4 × 20% | [passed](evidence/baseline-100k.json) |
 
 In every passed run all four sessions reconciled exactly, including the probe viewport, which received precisely the positions in its subscribed tiles. The earlier single-process design's 10,000-device runs remain in `evidence/` under [policy v2](evidence/acceptance-policy.md).
 
