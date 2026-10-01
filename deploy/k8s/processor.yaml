@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: processor
+spec:
+  replicas: 8
+  selector:
+    matchLabels: {app: processor}
+  template:
+    metadata:
+      labels: {app: processor}
+    spec:
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: processor
+          image: fleetline
+          command: [python, -m, geo_tracking.processor]
+          ports:
+            - {name: metrics, containerPort: 9100}
+          envFrom:
+            - configMapRef: {name: fleetline}
+            - secretRef: {name: fleetline-database}
+          livenessProbe:
+            httpGet: {path: /health/live, port: metrics}
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+          resources:
+            requests: {cpu: 250m, memory: 128Mi}
+            limits: {memory: 384Mi}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: processor
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {app: processor}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: processor-metrics
+  labels: {app: processor}
+spec:
+  clusterIP: None
+  selector: {app: processor}
+  ports:
+    - {name: metrics, port: 9100, targetPort: metrics}

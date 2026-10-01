@@ -131,6 +131,8 @@ All are `GEO_`-prefixed settings in `geo_tracking/settings.py`.
 
 ## Scaling out
 
+Kubernetes manifests for the stateless tiers, with the reasons behind their probes, budgets and autoscaling, are in [`deploy/k8s`](deploy/k8s/README.md), validated strictly with kubeconform.
+
 | Tier | How it scales here | What a multi-host deployment adds |
 | --- | --- | --- |
 | api | `API_REPLICAS=N`, balanced by the edge | more edge capacity |
