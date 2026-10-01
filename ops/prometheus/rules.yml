@@ -11,11 +11,11 @@ groups:
         expr: histogram_quantile(0.95, sum by (le) (rate(fleet_processor_freshness_seconds_bucket[1m])))
 
       - alert: RetentionAtRisk
-        expr: fleet:consumer_lag:seconds > 900
+        expr: fleet:consumer_lag:seconds > 1800
         for: 1m
         labels: {severity: critical}
         annotations:
-          summary: Consumer lag is past half of Kafka retention; acked reports will be deleted unread.
+          summary: Consumer lag is past 30 min of ingest; the 1 GiB-per-partition cap can delete acked reports unread.
       - alert: ConsumerLagGrowing
         expr: deriv(fleet:consumer_lag:records[5m]) > 0 and fleet:consumer_lag:records > 10000
         for: 5m

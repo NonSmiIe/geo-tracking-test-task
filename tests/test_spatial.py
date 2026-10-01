@@ -7,7 +7,7 @@ from sqlalchemy import text
 from geo_tracking.db import Database
 from geo_tracking.models import Zone
 from geo_tracking.settings import Settings
-from geo_tracking.spatial import match_records
+from geo_tracking.spatial import advance, match_records, persisted
 
 
 def zone(latitude: float, longitude: float, radius: float, **changes: object) -> Zone:
@@ -164,5 +164,18 @@ async def test_grid_cells_never_exclude_a_point_inside_the_box(settings: Setting
                 )
             ).scalar_one()
             assert missed == 0
+    finally:
+        await db.close()
+
+
+async def test_progress_of_a_recreated_topic_starts_empty(settings: Settings) -> None:
+    db = Database(settings)
+    try:
+        async with db.sessions() as session, session.begin():
+            await advance(session, "old-topic-id", 0, 5_000_000)
+            await advance(session, "old-topic-id", 0, 10)
+        async with db.sessions() as session:
+            assert await persisted(session, "old-topic-id", 0) == 5_000_000
+            assert await persisted(session, "new-topic-id", 0) == -1
     finally:
         await db.close()

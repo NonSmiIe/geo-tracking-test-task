@@ -4,22 +4,22 @@ rule_files:
 evaluation_interval: 15s
 
 tests:
-  - name: a processor outage longer than half the retention pages
+  - name: a processor outage past 30 minutes of ingest pages
     interval: 15s
     input_series:
       - series: fleet_ingest_reports_total{outcome="accepted", instance="api-1"}
-        values: 0+15000x40
+        values: 0+15000x60
       - series: kafka_consumergroup_lag{consumergroup="processors", topic="reports", partition="0"}
-        values: 0+50000x40
+        values: 0+50000x60
     alert_rule_test:
       - eval_time: 4m
         alertname: RetentionAtRisk
-      - eval_time: 10m
+      - eval_time: 12m
         alertname: RetentionAtRisk
         exp_alerts:
           - exp_labels: {severity: critical}
             exp_annotations:
-              summary: Consumer lag is past half of Kafka retention; acked reports will be deleted unread.
+              summary: Consumer lag is past 30 min of ingest; the 1 GiB-per-partition cap can delete acked reports unread.
 
   - name: a keeping-up pipeline raises nothing
     interval: 15s

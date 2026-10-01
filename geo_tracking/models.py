@@ -66,6 +66,6 @@ class DemoRun(Base):
 
 class ConsumerProgress(Base):
     __tablename__ = "consumer_progress"
-    topic: Mapped[str] = mapped_column(String(249), primary_key=True)
+    topic_id: Mapped[str] = mapped_column(String(32), primary_key=True)
     partition: Mapped[int] = mapped_column(Integer, primary_key=True)
     persisted: Mapped[int] = mapped_column(BigInteger)

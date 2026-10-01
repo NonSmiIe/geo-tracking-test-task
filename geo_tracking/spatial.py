@@ -6,13 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 Record = tuple[str, float, float, int]
 
 PROGRESS_SQL = text("""
-SELECT persisted FROM consumer_progress WHERE topic = :topic AND partition = :partition
+SELECT persisted FROM consumer_progress WHERE topic_id = :topic_id AND partition = :partition
 """)
 
 ADVANCE_SQL = text("""
-INSERT INTO consumer_progress AS progress (topic, partition, persisted)
-VALUES (:topic, :partition, :persisted)
-ON CONFLICT (topic, partition) DO UPDATE
+INSERT INTO consumer_progress AS progress (topic_id, partition, persisted)
+VALUES (:topic_id, :partition, :persisted)
+ON CONFLICT (topic_id, partition) DO UPDATE
 SET persisted = greatest(progress.persisted, excluded.persisted)
 """)
 
@@ -45,15 +45,15 @@ RETURNING device.device_id, (extract(epoch FROM old.reported_at) * 1000000)::big
 """)
 
 
-async def persisted(session: AsyncSession, topic: str, partition: int) -> int:
-    result = await session.execute(PROGRESS_SQL, {"topic": topic, "partition": partition})
+async def persisted(session: AsyncSession, topic_id: str, partition: int) -> int:
+    result = await session.execute(PROGRESS_SQL, {"topic_id": topic_id, "partition": partition})
     value = result.scalar_one_or_none()
     return -1 if value is None else value
 
 
-async def advance(session: AsyncSession, topic: str, partition: int, offset: int) -> None:
+async def advance(session: AsyncSession, topic_id: str, partition: int, offset: int) -> None:
     await session.execute(
-        ADVANCE_SQL, {"topic": topic, "partition": partition, "persisted": offset}
+        ADVANCE_SQL, {"topic_id": topic_id, "partition": partition, "persisted": offset}
     )
 
 

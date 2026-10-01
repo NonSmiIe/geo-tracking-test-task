@@ -12,7 +12,7 @@ from aiokafka.errors import CommitFailedError, IllegalStateError
 from nats.aio.client import Client
 from nats.errors import Error as NatsError
 
-from geo_tracking.bus import Subjects, connect_nats, ensure_topic
+from geo_tracking.bus import Subjects, connect_nats, ensure_topic, kafka_topic_id
 from geo_tracking.db import DATABASE_ERRORS, Database
 from geo_tracking.metrics import (
     ALERTS,
@@ -46,8 +46,16 @@ def frame(kind: str, items: list[Any]) -> bytes:
 
 
 class Processor(ConsumerRebalanceListener):
-    def __init__(self, settings: Settings, db: Database, nats: Client, consumer: AIOKafkaConsumer):
+    def __init__(
+        self,
+        settings: Settings,
+        db: Database,
+        nats: Client,
+        consumer: AIOKafkaConsumer,
+        topic_id: str,
+    ):
         self.settings, self.db, self.nats, self.consumer = settings, db, nats, consumer
+        self.topic_id = topic_id
         self.subjects = Subjects(settings.subject_prefix)
         self.polls: dict[TopicPartition, float] = {}
         self.lanes: dict[TopicPartition, asyncio.Task[None]] = {}
@@ -65,9 +73,8 @@ class Processor(ConsumerRebalanceListener):
         return kept
 
     async def process(self, partition: int, items: list[ConsumerRecord]) -> None:
-        topic = self.settings.kafka_topic
         async with self.transactions, self.db.sessions() as session, session.begin():
-            limit = await persisted(session, topic, partition)
+            limit = await persisted(session, self.topic_id, partition)
             replayed: list[Record] = []
             live: list[Record] = []
             for item in items:
@@ -83,7 +90,7 @@ class Processor(ConsumerRebalanceListener):
             ]
             emitted = replayed + fresh
             matches = await match_records(session, emitted) if emitted else []
-            await advance(session, topic, partition, items[-1].offset)
+            await advance(session, self.topic_id, partition, items[-1].offset)
         RECORDS.labels("replayed").inc(len(replayed))
         RECORDS.labels("stale").inc(len(live) - len(fresh))
         RECORDS.labels("committed").inc(len(fresh))
@@ -225,10 +232,11 @@ async def serve(
     settings: Settings, stopping: asyncio.Event, assigned: asyncio.Event | None = None
 ) -> None:
     await ensure_topic(settings)
+    topic_id = await kafka_topic_id(settings)
     db = Database(settings, pool_size=settings.processor_transactions)
     nats = await connect_nats(settings)
     kafka = consumer(settings)
-    processor = Processor(settings, db, nats, kafka)
+    processor = Processor(settings, db, nats, kafka, topic_id)
     kafka.subscribe([settings.kafka_topic], listener=processor)
     await kafka.start()
     runner = web.AppRunner(health_app(), access_log=None)

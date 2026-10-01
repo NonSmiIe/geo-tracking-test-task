@@ -5,6 +5,7 @@ import confluent_kafka
 import nats
 from aiokafka.admin import AIOKafkaAdminClient, NewTopic
 from aiokafka.errors import TopicAlreadyExistsError
+from confluent_kafka.admin import AdminClient
 from nats.aio.client import Client
 from nats.errors import SlowConsumerError
 
@@ -107,3 +108,12 @@ async def ensure_topic(settings: Settings) -> None:
         pass
     finally:
         await admin.close()
+
+
+async def kafka_topic_id(settings: Settings) -> str:
+    def describe() -> str:
+        admin = AdminClient({"bootstrap.servers": settings.kafka_bootstrap})
+        topics = confluent_kafka.TopicCollection([settings.kafka_topic])
+        return str(admin.describe_topics(topics)[settings.kafka_topic].result(timeout=10).topic_id)
+
+    return await asyncio.to_thread(describe)
