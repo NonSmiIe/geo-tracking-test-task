@@ -1,5 +1,6 @@
 import asyncio
 from collections import deque
+from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 import orjson
@@ -101,7 +102,7 @@ class Gateway:
                 self.routes[subject].add(connection)
             connection.subjects = set(subjects)
 
-    def handler(self, subject: str):
+    def handler(self, subject: str) -> Callable[[Msg], Awaitable[None]]:
         async def receive(message: Msg) -> None:
             self.deliver(subject, message.data)
 

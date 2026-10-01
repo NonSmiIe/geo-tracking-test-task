@@ -1,4 +1,5 @@
 from functools import cache
+from typing import Any
 
 from aiokafka.errors import KafkaError
 from fastapi import APIRouter, HTTPException, Request, WebSocket
@@ -37,7 +38,7 @@ async def publish(services: Services, reports: list[Report]) -> dict:
     return {"accepted": len(reports)}
 
 
-def parse(adapter: TypeAdapter, body: bytes):
+def parse(adapter: TypeAdapter, body: bytes) -> Any:
     try:
         return adapter.validate_json(body)
     except ValidationError as error:
