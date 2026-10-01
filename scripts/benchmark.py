@@ -17,7 +17,14 @@ import websockets
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from generator import Config, Histogram, fingerprint, run
 from geo_tracking.tiles import viewport_subjects
-from scripts.acceptance import POLICY, assess_pipeline, assess_resources, assess_workload
+from scripts.acceptance import (
+    FAULT_POLICY,
+    POLICY,
+    assess_fault_run,
+    assess_pipeline,
+    assess_resources,
+    assess_workload,
+)
 
 TOTALS = {
     "accepted": 'sum(fleet_ingest_reports_total{outcome="accepted"})',
@@ -77,7 +84,7 @@ def observe(url: str, user: str, viewport: dict, prefix: str, interval: float, r
         return socket
 
     async def main() -> dict:
-        counts, checksums, duplicates = Counter(), Counter(), Counter()
+        counts, checksums, duplicates, since_closure = Counter(), Counter(), Counter(), Counter()
         seen: dict[str, dict[str, tuple[int, int]]] = {"positions": {}, "inside_report": {}}
         latency = {"positions": Histogram(), "inside_report": Histogram()}
         closures: list[float] = []
@@ -93,6 +100,7 @@ def observe(url: str, user: str, viewport: dict, prefix: str, interval: float, r
                 continue
             except websockets.ConnectionClosed:
                 closures.append(round(time.monotonic() - started, 2))
+                since_closure.clear()
                 while not stop.is_set():
                     await asyncio.sleep(0.5)
                     try:
@@ -126,6 +134,7 @@ def observe(url: str, user: str, viewport: dict, prefix: str, interval: float, r
                     continue
                 seen[kind][device] = anchor, bits | 1 << index
                 counts[kind] += 1
+                since_closure[kind] += 1
                 checksums[kind] = (checksums[kind] + fingerprint(device, stamp)) % (1 << 64)
                 histogram.add((now - stamp) / 1_000_000)
         await socket.close()
@@ -133,6 +142,7 @@ def observe(url: str, user: str, viewport: dict, prefix: str, interval: float, r
             "counts": dict(counts),
             "duplicates": dict(duplicates),
             "closures_at_seconds": closures,
+            "received_after_last_closure": dict(since_closure),
             "checksums": {key: str(value) for key, value in checksums.items()},
             "latency": {key: value.summary() for key, value in latency.items()},
             "latency_buckets": {key: dict(value.buckets) for key, value in latency.items()},
@@ -394,15 +404,19 @@ async def benchmark(args: argparse.Namespace) -> dict:
     faults_applied = all(item["exit_code"] == 0 for item in faults) and len(faults) == len(
         args.fault
     )
+    fault_run = assess_fault_run(workload, pipeline, delivery) if args.fault else None
     return {
-        "acceptance_policy": POLICY,
+        "acceptance_policy": FAULT_POLICY if args.fault else POLICY,
         "faults_applied": faults_applied,
-        "acceptance_passed": faults_applied
+        "acceptance_passed": faults_applied and fault_run["passed"]
+        if fault_run
+        else faults_applied
         and workload["passed"]
         and pipeline["passed"]
         and reconciled
         and latency_passed
         and resources["passed"],
+        "fault_run": fault_run,
         "started_at": samples[0]["sampled_at"] if samples else None,
         "fixture": {
             "devices": args.devices,

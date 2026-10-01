@@ -2,6 +2,7 @@ import re
 from statistics import median
 
 POLICY = "operational-v4"
+FAULT_POLICY = "fault-v1"
 
 
 def assess_workload(generated: dict) -> dict:
@@ -85,3 +86,24 @@ def assess_resources(samples: list[dict]) -> dict:
             "cpu_peak_percent": max(cpu for _, _, cpu in rows),
         }
     return {"passed": all(checks.values()), "checks": checks, "containers": details}
+
+
+def assess_fault_run(workload: dict, pipeline: dict, delivery: list[dict]) -> dict:
+    sessions = {}
+    for session in delivery:
+        if session["closures_at_seconds"]:
+            sessions[session["session"]] = bool(session["received_after_last_closure"])
+        else:
+            sessions[session["session"]] = all(
+                passed for kind, passed in session["checks"].items() if kind != "not_closed"
+            )
+    checks = {
+        "exact_population": workload["checks"]["exact_population"],
+        "no_loss_or_overload": workload["checks"]["no_loss_or_overload"],
+        "database_holds_every_latest_report": pipeline["checks"][
+            "database_holds_every_latest_report"
+        ],
+        "consumer_lag_drained": pipeline["checks"]["consumer_lag_drained"],
+        "open_sessions_missed_nothing_and_closed_ones_resumed": all(sessions.values()),
+    }
+    return {"passed": all(checks.values()), "checks": checks, "sessions": sessions}

@@ -1,6 +1,6 @@
 from copy import deepcopy
 
-from scripts.acceptance import assess_pipeline, assess_resources, assess_workload
+from scripts.acceptance import assess_fault_run, assess_pipeline, assess_resources, assess_workload
 
 
 def generated() -> dict:
@@ -64,3 +64,25 @@ def test_resources_require_samples_headroom_and_steady_memory() -> None:
     assert not assess_resources(samples("950MiB"))["passed"]
     assert not assess_resources(samples("400MiB")[:2])["passed"]
     assert not assess_resources([])["passed"]
+
+
+def test_fault_runs_judge_durability_and_resumption_not_counters() -> None:
+    workload = {"checks": {"exact_population": True, "no_loss_or_overload": True}}
+    pipeline = {
+        "checks": {"database_holds_every_latest_report": True, "consumer_lag_drained": True}
+    }
+
+    def session(index: int, closed: bool, exact: bool, resumed: bool) -> dict:
+        return {
+            "session": index,
+            "closures_at_seconds": [42.0] if closed else [],
+            "received_after_last_closure": {"positions": 5} if resumed else {},
+            "checks": {"positions": exact, "inside_report": exact, "not_closed": not closed},
+        }
+
+    assert assess_fault_run(workload, pipeline, [session(0, False, True, False)])["passed"]
+    assert assess_fault_run(workload, pipeline, [session(0, True, False, True)])["passed"]
+    assert not assess_fault_run(workload, pipeline, [session(0, True, False, False)])["passed"]
+    assert not assess_fault_run(workload, pipeline, [session(0, False, False, False)])["passed"]
+    lost = {"checks": {**pipeline["checks"], "database_holds_every_latest_report": False}}
+    assert not assess_fault_run(workload, lost, [session(0, False, True, False)])["passed"]
