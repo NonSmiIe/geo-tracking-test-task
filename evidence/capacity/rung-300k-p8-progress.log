@@ -1,0 +1,92 @@
+{
+  "acceptance_passed": false,
+  "workload": {
+    "passed": false,
+    "checks": {
+      "exact_population": true,
+      "no_loss_or_overload": true,
+      "sustained_rate": true,
+      "scheduling_p99": true,
+      "scheduling_tail_fraction": false,
+      "scheduling_max": true
+    },
+    "late_fraction": 0.003615611111111111,
+    "minimum_acked_rate": 59400.0
+  },
+  "pipeline": {
+    "passed": true,
+    "checks": {
+      "every_acked_report_committed": true,
+      "consumer_lag_drained": true,
+      "no_session_evicted": true,
+      "no_failed_batches": true,
+      "database_holds_every_latest_report": true
+    },
+    "committed": 18000000,
+    "stored_latest": {
+      "devices": 300000,
+      "timestamp_sum": "537265106279637120388"
+    }
+  },
+  "delivery_reconciled": true,
+  "delivery_latency": {
+    "positions": {
+      "count": 57721281,
+      "max_ms": 100000,
+      "p50_ms": 56095,
+      "p95_ms": 89186,
+      "p99_ms": 95410
+    },
+    "inside_report": {
+      "count": 36000000,
+      "max_ms": 100000,
+      "p50_ms": 56089,
+      "p95_ms": 89198,
+      "p99_ms": 95422
+    }
+  },
+  "sessions": [
+    {
+      "counts": {
+        "positions": 18000000,
+        "inside_report": 18000000
+      },
+      "checks": {
+        "positions": true,
+        "inside_report": true,
+        "not_closed": true
+      }
+    },
+    {
+      "counts": {
+        "positions": 18000000,
+        "inside_report": 18000000
+      },
+      "checks": {
+        "positions": true,
+        "inside_report": true,
+        "not_closed": true
+      }
+    },
+    {
+      "counts": {
+        "positions": 18000000
+      },
+      "checks": {
+        "positions": true,
+        "inside_report": true,
+        "not_closed": true
+      }
+    },
+    {
+      "counts": {
+        "positions": 3721281
+      },
+      "checks": {
+        "positions": true,
+        "inside_report": true,
+        "not_closed": true
+      }
+    }
+  ]
+}

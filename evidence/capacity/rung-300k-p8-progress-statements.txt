@@ -1,0 +1,16 @@
+ calls | total_ms | mean_ms | plan_ms |   rows   |                                             q                                              
+-------+----------+---------+---------+----------+--------------------------------------------------------------------------------------------
+  9017 |   530553 |   58.84 |       0 | 17989840 | INSERT INTO device_latest AS device (device_id, position, reported_at) SELECT device_id, S
+  9017 |   429287 |   47.61 |       0 | 17689840 | SELECT device_id, (extract($2 FROM reported_at) * $3)::bigint FROM device_latest WHERE dev
+  9017 |   213409 |   23.67 |       0 | 18000000 | WITH samples AS MATERIALIZED ( SELECT ordinality - $3 AS report_index, ST_SetSRID(ST_MakeP
+  8113 |      976 |    0.12 |       0 |     8577 | INSERT INTO consumer_progress AS progress (topic, partition, persisted) SELECT $1, partiti
+  9017 |      449 |    0.05 |       0 |   216200 | SELECT partition, persisted FROM consumer_progress WHERE topic = $1
+     1 |      208 |  207.53 |       0 |        1 | SELECT count(*), coalesce(sum((extract($1 FROM reported_at) * $2)::bigint), $3) FROM devic
+   100 |       43 |    0.43 |       0 |      100 | INSERT INTO geozones (id, user_id, name, center, radius_m, active, version) VALUES ($1::UU
+   904 |       39 |    0.04 |       0 |     1265 | INSERT INTO consumer_progress AS progress (topic, partition, persisted) SELECT $1, partiti
+ 18434 |       15 |    0.00 |       0 |        0 | BEGIN
+    24 |       10 |    0.42 |       0 |       48 | WITH RECURSIVE typeinfo_tree( oid, ns, name, kind, basetype, elemtype, elemdelim, range_su
+  9217 |        8 |    0.00 |       0 |        0 | COMMIT
+  9217 |        4 |    0.00 |       0 |        0 | ROLLBACK
+(12 rows)
+
