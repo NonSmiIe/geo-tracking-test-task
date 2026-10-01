@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from geoalchemy2 import Geometry
-from sqlalchemy import ColumnElement, cast, func, or_, select
+from sqlalchemy import ColumnElement, and_, any_, cast, func, or_, select
 
 from geo_tracking.api.services import Session, User
 from geo_tracking.insights import insights
@@ -12,24 +12,34 @@ from geo_tracking.schemas import Latitude, Longitude
 router = APIRouter(tags=["devices"])
 
 
+Envelope = ColumnElement[object]
+
+
 def bounds(
     south: Latitude | None = None,
     west: Longitude | None = None,
     north: Latitude | None = None,
     east: Longitude | None = None,
-) -> ColumnElement[bool] | None:
+) -> list[Envelope]:
     edges = (south, west, north, east)
     if all(edge is None for edge in edges):
-        return None
-    if any(edge is None for edge in edges) or south > north:
+        return []
+    if south is None or west is None or north is None or east is None or south > north:
         raise HTTPException(422, "bbox_requires_ordered_south_west_north_east")
     spans = [(west, east)] if west <= east else [(west, 180.0), (-180.0, east)]
+    return [func.ST_MakeEnvelope(low, south, high, north, 4326) for low, high in spans]
+
+
+async def area(session: Session, envelopes: list[Envelope]) -> ColumnElement[bool]:
+    cells = (await session.execute(select(*[func.grid_cells(item) for item in envelopes]))).one()
     return or_(
         *[
-            func.ST_Intersects(
-                DeviceLatest.position, func.ST_MakeEnvelope(low, south, high, north, 4326)
+            and_(
+                DeviceLatest.cell == any_(covered), func.ST_Intersects(DeviceLatest.position, item)
             )
-            for low, high in spans
+            if covered is not None
+            else func.ST_Intersects(DeviceLatest.position, item)
+            for item, covered in zip(envelopes, cells, strict=True)
         ]
     )
 
@@ -38,7 +48,7 @@ def bounds(
 async def latest(
     user: User,
     session: Session,
-    area: Annotated[ColumnElement[bool] | None, Depends(bounds)],
+    envelopes: Annotated[list[Envelope], Depends(bounds)],
     after: str | None = None,
     limit: int = Query(1000, ge=1, le=1000),
 ) -> dict:
@@ -53,8 +63,8 @@ async def latest(
         .order_by(DeviceLatest.device_id)
         .limit(limit + 1)
     )
-    if area is not None:
-        query = query.where(area)
+    if envelopes:
+        query = query.where(await area(session, envelopes))
     if after:
         query = query.where(DeviceLatest.device_id > after)
     rows = (await session.execute(query)).mappings().all()
