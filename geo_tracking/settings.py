@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     body_bytes: int = Field(default=262144, ge=1024)
     batch_reports: int = Field(default=200, ge=1, le=1000)
     produce_window: int = Field(default=8192, ge=1)
+    produce_linger_ms: int = Field(default=20, ge=0)
     ingest_window: int = Field(default=1024, ge=1)
     admission_timeout_seconds: float = Field(default=1, gt=0)
     ack_interval_seconds: float = Field(default=0.2, gt=0)

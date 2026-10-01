@@ -2,8 +2,9 @@ import asyncio
 
 import orjson
 import pytest
-from aiokafka.errors import KafkaTimeoutError
+from aiokafka.partitioner import DefaultPartitioner
 
+from geo_tracking.bus import ProduceFailed, Producer, ensure_topic
 from geo_tracking.ingest import Acknowledgements, Ingest, Overloaded, Window
 from geo_tracking.schemas import REPORT
 from geo_tracking.settings import Settings
@@ -25,11 +26,11 @@ class FailingProducer:
     def __init__(self, raise_on_send: bool):
         self.raise_on_send = raise_on_send
 
-    async def send(self, *args: object, **kwargs: object) -> asyncio.Future:
+    def send(self, *args: object) -> asyncio.Future:
         if self.raise_on_send:
-            raise KafkaTimeoutError()
+            raise ProduceFailed("queue full")
         future: asyncio.Future = asyncio.get_running_loop().create_future()
-        future.set_exception(KafkaTimeoutError())
+        future.set_exception(ProduceFailed("timed out"))
         return future
 
 
@@ -63,7 +64,7 @@ def ingest(raise_on_send: bool, window: int = 4) -> Ingest:
 async def test_failed_http_produce_returns_its_window(raise_on_send: bool) -> None:
     service = ingest(raise_on_send)
     for _ in range(3):
-        with pytest.raises(KafkaTimeoutError):
+        with pytest.raises(ProduceFailed):
             await service.publish([REPORT.decode(orjson.dumps(report()))] * 4)
     assert service.inflight == 0
     with pytest.raises(Overloaded):
@@ -123,3 +124,25 @@ async def test_a_release_between_cancel_and_unwind_keeps_every_permit() -> None:
     window.release(1)
     await window.acquire(2)
     assert window.free == 0 and not window.waiters
+
+
+async def test_librdkafka_partitions_every_key_like_the_java_default(settings: Settings) -> None:
+    settings = settings.model_copy(update={"kafka_partitions": 24})
+    await ensure_topic(settings)
+    producer = Producer(settings)
+    await producer.start()
+    keys = [f"device-{index}".encode() for index in range(3000)]
+    placed: dict[bytes, int] = {}
+
+    def remember(error: object, message: object) -> None:
+        placed[message.key()] = message.partition()
+
+    try:
+        for key in keys:
+            producer.client.produce(settings.kafka_topic, b"{}", key, on_delivery=remember)
+        await asyncio.to_thread(producer.client.flush, 15)
+    finally:
+        await producer.stop()
+    java = DefaultPartitioner()
+    partitions = list(range(24))
+    assert placed == {key: java(key, partitions, partitions) for key in keys}

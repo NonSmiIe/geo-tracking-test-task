@@ -1,10 +1,10 @@
 from typing import Any
 
 import msgspec
-from aiokafka.errors import KafkaError
 from fastapi import APIRouter, HTTPException, Request, WebSocket
 
 from geo_tracking.api.services import Services, ServicesDep
+from geo_tracking.bus import ProduceFailed
 from geo_tracking.ingest import Overloaded
 from geo_tracking.schemas import REPORT, Report, batch_decoder
 
@@ -26,7 +26,7 @@ async def publish(services: Services, reports: list[Report]) -> dict:
         await services.ingest.publish(reports)
     except Overloaded:
         raise HTTPException(503, "ingest_capacity", headers={"Retry-After": "1"}) from None
-    except KafkaError:
+    except ProduceFailed:
         raise HTTPException(503, "broker_unavailable", headers={"Retry-After": "1"}) from None
     return {"accepted": len(reports)}
 

@@ -18,6 +18,8 @@ dependencies = [
   "nats-py>=2.10,<3",
   "prometheus-client>=0.21,<1",
   "msgspec>=0.19,<1",
+  "confluent-kafka>=2.11,<3",
+  "cramjam>=2.9,<3",
 ]
 
 [dependency-groups]

@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from geo_tracking.api import demo, devices, geozones, health, locations
 from geo_tracking.api.services import Services, zones_changed
-from geo_tracking.bus import Subjects, connect_nats, ensure_topic, kafka_producer
+from geo_tracking.bus import Producer, Subjects, connect_nats, ensure_topic
 from geo_tracking.db import DATABASE_ERRORS, Database
 from geo_tracking.demo import Demo
 from geo_tracking.ingest import Ingest
@@ -36,7 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await ensure_topic(settings)
         db = Database(settings)
-        producer = kafka_producer(settings)
+        producer = Producer(settings)
         await producer.start()
         nats = await connect_nats(settings)
         subjects = Subjects(settings.subject_prefix)

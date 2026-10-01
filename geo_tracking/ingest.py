@@ -5,11 +5,9 @@ from functools import partial
 
 import msgspec
 import orjson
-from aiokafka import AIOKafkaProducer
-from aiokafka.errors import KafkaError
-from aiokafka.structs import RecordMetadata
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from geo_tracking.bus import ProduceFailed, Producer
 from geo_tracking.metrics import INGESTED, WINDOW_SIZE, WINDOW_USED
 from geo_tracking.schemas import Flush, Report, frame_decoder
 from geo_tracking.settings import Settings
@@ -92,7 +90,7 @@ class Window:
 
 
 class Ingest:
-    def __init__(self, settings: Settings, producer: AIOKafkaProducer) -> None:
+    def __init__(self, settings: Settings, producer: Producer) -> None:
         self.settings, self.producer = settings, producer
         self.window = Window(settings.produce_window)
         self.inflight = 0
@@ -108,11 +106,9 @@ class Ingest:
         self.inflight -= count
         self.window.release(count)
 
-    async def send(self, report: Report) -> asyncio.Future[RecordMetadata]:
-        return await self.producer.send(
-            self.settings.kafka_topic,
-            value=orjson.dumps(report.record()),
-            key=report.device_id.encode(),
+    def send(self, report: Report) -> asyncio.Future[None]:
+        return self.producer.send(
+            self.settings.kafka_topic, report.device_id.encode(), orjson.dumps(report.record())
         )
 
     async def publish(self, reports: Sequence[Report]) -> None:
@@ -123,7 +119,7 @@ class Ingest:
             HTTP_OVERLOADED.inc(len(reports))
             raise Overloaded from None
         try:
-            await asyncio.gather(*[await self.send(report) for report in reports])
+            await asyncio.gather(*[self.send(report) for report in reports])
         except BaseException:
             HTTP_FAILED.inc(len(reports))
             raise
@@ -143,7 +139,7 @@ class Ingest:
             self.closers.add(closer)
             closer.add_done_callback(self.closers.discard)
 
-        def settled(sequence: int, future: asyncio.Future[RecordMetadata]) -> None:
+        def settled(sequence: int, future: asyncio.Future[None]) -> None:
             own.release(1)
             self.release(1)
             if future.cancelled() or future.exception() is not None:
@@ -178,8 +174,8 @@ class Ingest:
                 for index, report in enumerate(frame):
                     sequence = acks.issue()
                     try:
-                        future = await self.send(report)
-                    except KafkaError:
+                        future = self.send(report)
+                    except ProduceFailed:
                         unsent = len(frame) - index
                         STREAM_FAILED.inc(unsent)
                         own.release(unsent)

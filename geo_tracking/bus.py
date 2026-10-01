@@ -1,5 +1,7 @@
+import asyncio
+
+import confluent_kafka
 import nats
-from aiokafka import AIOKafkaProducer
 from aiokafka.admin import AIOKafkaAdminClient, NewTopic
 from aiokafka.errors import TopicAlreadyExistsError
 from nats.aio.client import Client
@@ -34,15 +36,55 @@ async def connect_nats(settings: Settings) -> Client:
     )
 
 
-def kafka_producer(settings: Settings) -> AIOKafkaProducer:
-    return AIOKafkaProducer(
-        bootstrap_servers=settings.kafka_bootstrap,
-        acks="all",
-        enable_idempotence=True,
-        linger_ms=5,
-        max_batch_size=262144,
-        request_timeout_ms=10000,
-    )
+class ProduceFailed(Exception):
+    pass
+
+
+class Producer:
+    def __init__(self, settings: Settings) -> None:
+        self.client = confluent_kafka.Producer(
+            {
+                "bootstrap.servers": settings.kafka_bootstrap,
+                "acks": "all",
+                "enable.idempotence": True,
+                "partitioner": "murmur2_random",
+                "compression.type": "lz4",
+                "linger.ms": settings.produce_linger_ms,
+                "message.timeout.ms": 10000,
+            }
+        )
+        self.poller: asyncio.Task[None] | None = None
+
+    async def start(self) -> None:
+        self.poller = asyncio.create_task(self.poll())
+
+    async def poll(self) -> None:
+        while True:
+            self.client.poll(0)
+            await asyncio.sleep(0.002)
+
+    def send(self, topic: str, key: bytes, value: bytes) -> asyncio.Future[None]:
+        future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+
+        def delivered(error: confluent_kafka.KafkaError | None, message: object) -> None:
+            if future.done():
+                return
+            if error is None:
+                future.set_result(None)
+            else:
+                future.set_exception(ProduceFailed(error.str()))
+
+        try:
+            self.client.produce(topic, value, key, on_delivery=delivered)
+        except (BufferError, confluent_kafka.KafkaException) as error:
+            raise ProduceFailed(str(error)) from error
+        return future
+
+    async def stop(self) -> None:
+        if self.poller is not None:
+            self.poller.cancel()
+            await asyncio.gather(self.poller, return_exceptions=True)
+        await asyncio.to_thread(self.client.flush, 10)
 
 
 async def ensure_topic(settings: Settings) -> None:

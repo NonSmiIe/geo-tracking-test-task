@@ -137,7 +137,7 @@ services:
       <<: *health
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9100/health/live', timeout=3)"]
     deploy:
-      replicas: ${PROCESSORS:-4}
+      replicas: ${PROCESSORS:-8}
     mem_limit: 384m
     cpus: 1
   prometheus:
