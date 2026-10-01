@@ -1,6 +1,6 @@
 # Fleetline: real-time geo-tracking and private geozone alerts
 
-Fleetline is a FastAPI, async SQLAlchemy and PostgreSQL/PostGIS service that ingests positions from a moving fleet. It streams them to dashboards and pushes an alert to every open session of a user whenever one of that user's devices reports from inside one of their circular geozones. The api, the dashboard gateway and the processors scale out by adding replicas; Kafka, NATS and PostgreSQL run as single instances here (see [Scaling out](#scaling-out)). The measured envelope on one laptop is 100,000 devices reporting every five seconds (20,000 reports/s), verified by count and identity checksum on every session; see [Measured results](#measured-results).
+Fleetline is a FastAPI, async SQLAlchemy and PostgreSQL/PostGIS service that ingests positions from a moving fleet. It streams them to dashboards and pushes an alert to every open session of a user whenever one of that user's devices reports from inside one of their circular geozones. The api, the dashboard gateway and the processors scale out by adding replicas; Kafka, NATS and PostgreSQL run as single instances here (see [Scaling out](#scaling-out)). The measured envelope on one laptop is 300,000 devices reporting every five seconds (60,000 reports/s), verified by count and identity checksum on every session; see [Measured results](#measured-results).
 
 Design notes, with the brief, the reasoning behind each decision and the measurements: **https://claude.ai/artifact/5qGpLJVYQAY62WckcMui21**
 
@@ -194,8 +194,11 @@ Apple M4 Pro; the Docker VM has 14 CPUs and 8 GB, shared with unrelated containe
 | 150,000 · 300 s, edge + 4 api + 2 gateway replicas | 29,993 | 9,000,000 / 9,000,000 | 71 / 278 / 510 ms | 4 × 58% + gateways 46% + edge 51% | 4 × 17% | [passed](evidence/capacity/rung-150k-h1.json) |
 | 200,000 · 300 s, edge topology | 39,940 | 12,000,000 / 12,000,000 | 310 / 1,393 / 2,093 ms | 4 × 67%; PostgreSQL 194% | 4 × 16% | [failed: p95 over 1 s](evidence/capacity/rung-200k.json) |
 | 200,000 · 300 s, grid cell instead of device GiST | 39,959 | 12,000,000 / 12,000,000 | 114 / 448 / 768 ms | 4 × 60%; PostgreSQL 105% | 4 × 17% | [passed](evidence/capacity/rung-200k-h2.json) |
+| 300,000 · 300 s, 4 processors | 59,921 | 18,000,000 / 18,000,000 | 32 / 49 / 52 s | 4 × 70%; PostgreSQL 155% | 4 × 18% | [failed: processors commit 50k/s, lag grows](evidence/capacity/rung-300k.json) |
+| 300,000 · 300 s, 8 processors | 59,792 | 18,000,000 / 18,000,000 | 0.5 / 3.4 / 5.1 s | 4 × 69%; PostgreSQL 193% | 8 × 14% | [failed: p95 over 1 s](evidence/capacity/rung-300k-p8.json) |
+| 300,000 · 300 s, framed `/ingest`, PostgreSQL 18 upsert-returns-watermark, Prometheus policy v4 | 59,935 | 18,000,000 / 18,000,000 | 249 / 753 / 1,155 ms | 4 × 61%; PostgreSQL 119% | 8 × 14% | [passed](evidence/capacity/rung-300k-s1.json) |
 
-In every passed run all four sessions reconciled exactly, including the probe viewport, which received precisely the positions in its subscribed tiles. The earlier single-process design's 10,000-device runs remain in `evidence/` under [policy v2](evidence/acceptance-policy.md).
+Two 300k runs are not in the table because they measured the harness, not the service: one on a table holding 2M rows left by earlier runs, which made it I/O-bound ([kept](evidence/capacity/rung-300k-p8-progress.json)), and one where a Kafka-probing readiness check took every saturated api replica out of rotation ([kept](evidence/capacity/rung-300k-h5.json); that check is now deleted). In every passed run all four sessions reconciled exactly, including the probe viewport, which received precisely the positions in its subscribed tiles. The earlier single-process design's 10,000-device runs remain in `evidence/` under [policy v2](evidence/acceptance-policy.md).
 
 ## Limits
 

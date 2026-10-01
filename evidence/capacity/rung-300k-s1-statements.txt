@@ -1,0 +1,8 @@
+ calls | total_ms | mean_ms |                                   q                                    
+-------+----------+---------+------------------------------------------------------------------------
+ 41976 |   328600 |    7.83 | INSERT INTO device_latest AS device (device_id, position, reported_at)
+ 41976 |   113100 |    2.69 | WITH samples AS MATERIALIZED ( SELECT ordinality - $3 AS report_index,
+ 41938 |     1238 |    0.03 | INSERT INTO consumer_progress AS progress (topic, partition, persisted
+ 41976 |     1122 |    0.03 | SELECT partition, persisted FROM consumer_progress WHERE topic = $1
+(4 rows)
+
