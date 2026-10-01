@@ -50,6 +50,19 @@ def test_duplicates_and_stale_reports_change_nothing(stack, http) -> None:
     socket.close()
 
 
+def test_an_identical_replay_reemits_its_events_and_a_conflicting_one_does_not(stack, http) -> None:
+    zone(http)
+    socket = dashboard(stack, "alice")
+    http.post("/locations", json=report(offset=1))
+    assert collect(socket, "inside_report", 1)[0]["timestamp"] == micros(1)
+    http.post("/locations", json=report(offset=1))
+    assert collect(socket, "inside_report", 1)[0]["timestamp"] == micros(1)
+    http.post("/locations", json=report(offset=1, longitude=24.1053))
+    silent(socket, "inside_report")
+    assert latest(http, "device-1")["longitude"] == 24.1052
+    socket.close()
+
+
 def test_inside_then_outside_in_one_batch_keeps_the_inside_alert(stack, http) -> None:
     zone(http)
     socket = dashboard(stack, "alice")

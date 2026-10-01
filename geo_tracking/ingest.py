@@ -1,4 +1,5 @@
 import asyncio
+from collections import deque
 from collections.abc import Sequence
 from functools import partial
 
@@ -45,31 +46,54 @@ class Acknowledgements:
         self.idle.set()
 
 
+class Window:
+    def __init__(self, size: int) -> None:
+        self.free = size
+        self.waiters: deque[tuple[int, asyncio.Future[None]]] = deque()
+
+    async def acquire(self, count: int) -> None:
+        if not self.waiters and self.free >= count:
+            self.free -= count
+            return
+        grant: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        self.waiters.append((count, grant))
+        try:
+            await grant
+        except BaseException:
+            if grant.done() and not grant.cancelled():
+                self.release(count)
+            else:
+                self.waiters.remove((count, grant))
+                self.wake()
+            raise
+
+    def release(self, count: int) -> None:
+        self.free += count
+        self.wake()
+
+    def wake(self) -> None:
+        while self.waiters and self.waiters[0][0] <= self.free:
+            count, grant = self.waiters.popleft()
+            self.free -= count
+            grant.set_result(None)
+
+
 class Ingest:
     def __init__(self, settings: Settings, producer: AIOKafkaProducer, metrics: Metrics) -> None:
         self.settings, self.producer, self.metrics = settings, producer, metrics
-        self.window = asyncio.Semaphore(settings.produce_window)
+        self.window = Window(settings.produce_window)
         self.inflight = 0
         self.closers: set[asyncio.Task[None]] = set()
         metrics.gauges["produce_inflight"] = lambda: self.inflight
 
     async def admit(self, count: int) -> None:
-        acquired = 0
-        try:
-            while acquired < count:
-                await self.window.acquire()
-                acquired += 1
-        except BaseException:
-            for _ in range(acquired):
-                self.window.release()
-            raise
+        await self.window.acquire(count)
         self.inflight += count
         self.metrics.high_water("produce_inflight_high_water", self.inflight)
 
     def release(self, count: int) -> None:
         self.inflight -= count
-        for _ in range(count):
-            self.window.release()
+        self.window.release(count)
 
     async def send(self, report: Report) -> asyncio.Future[RecordMetadata]:
         return await self.producer.send(

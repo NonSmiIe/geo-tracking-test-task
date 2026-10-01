@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import logging
 import signal
 from collections import defaultdict
@@ -15,7 +14,7 @@ from geo_tracking.bus import Subjects, connect_nats, ensure_topic, serve_metrics
 from geo_tracking.db import DATABASE_ERRORS, Database
 from geo_tracking.metrics import Metrics, monitor_loop
 from geo_tracking.settings import Settings
-from geo_tracking.spatial import Record, match_records, persist_latest, watermarks
+from geo_tracking.spatial import Record, match_records, persist_latest, stored
 from geo_tracking.tiles import position_subject
 
 logger = logging.getLogger(__name__)
@@ -56,21 +55,28 @@ class Processor:
             seen.add(key)
             unique.append(record)
         async with self.db.sessions() as session, session.begin():
-            known = await watermarks(session, list({record[0] for record in unique}))
-            fresh = [record for record in unique if record[3] > known.get(record[0], -1)]
-            matches = await match_records(session, fresh) if fresh else []
+            known = await stored(session, list({record[0] for record in unique}))
+            fresh = [
+                record
+                for record in unique
+                if record[0] not in known or record[3] > known[record[0]][3]
+            ]
+            replayed = [record for record in unique if tuple(record) == known.get(record[0])]
+            emitted = fresh + replayed
+            matches = await match_records(session, emitted) if emitted else []
             await persist_latest(session, fresh)
-        self.metrics.counts["stale"] += len(unique) - len(fresh)
+        self.metrics.counts["replayed"] += len(replayed)
+        self.metrics.counts["stale"] += len(unique) - len(emitted)
         self.metrics.counts["reports_committed"] += len(fresh)
         self.metrics.counts["alerts_generated"] += len(matches)
         positions: dict[str, list] = defaultdict(list)
-        for record in fresh:
+        for record in emitted:
             positions[position_subject(self.settings.subject_prefix, record[1], record[2])].append(
                 record
             )
         alerts: dict[str, list] = defaultdict(list)
         for match in matches:
-            record = fresh[match["report_index"]]
+            record = emitted[match["report_index"]]
             alerts[match["user_id"]].append(
                 {
                     "device_id": record[0],
@@ -110,8 +116,8 @@ class Processor:
                 self.metrics.counts["publish_retries"] += 1
                 await asyncio.sleep(self.settings.processor_retry_seconds)
 
-    async def run(self) -> None:
-        while True:
+    async def run(self, stopping: asyncio.Event) -> None:
+        while not stopping.is_set():
             batches: dict[TopicPartition, list[ConsumerRecord]] = await self.consumer.getmany(
                 timeout_ms=self.settings.processor_poll_ms,
                 max_records=self.settings.processor_batch,
@@ -126,8 +132,10 @@ class Processor:
             except DATABASE_ERRORS:
                 logger.exception("Batch processing failed; replaying from the first offset")
                 self.metrics.counts["batches_failed"] += 1
+                owned = self.consumer.assignment()
                 for partition, items in batches.items():
-                    self.consumer.seek(partition, items[0].offset)
+                    if partition in owned:
+                        self.consumer.seek(partition, items[0].offset)
                 await asyncio.sleep(self.settings.processor_retry_seconds)
                 continue
             self.metrics.processing_ms.append((monotonic() - started) * 1000)
@@ -160,7 +168,9 @@ def consumer(settings: Settings) -> AIOKafkaConsumer:
     )
 
 
-async def serve(settings: Settings, assigned: asyncio.Event | None = None) -> None:
+async def serve(
+    settings: Settings, stopping: asyncio.Event, assigned: asyncio.Event | None = None
+) -> None:
     await ensure_topic(settings)
     db = Database(settings, pool_size=2)
     nats = await connect_nats(settings)
@@ -169,7 +179,7 @@ async def serve(settings: Settings, assigned: asyncio.Event | None = None) -> No
     processor = Processor(settings, db, nats, kafka)
     responder = await serve_metrics(nats, processor.subjects, processor.metrics.snapshot)
     monitor = asyncio.create_task(monitor_loop(processor.metrics))
-    running = asyncio.create_task(processor.run())
+    running = asyncio.create_task(processor.run(stopping))
     try:
         if assigned is not None:
             while not kafka.assignment() and not running.done():  # noqa: ASYNC110
@@ -182,15 +192,14 @@ async def serve(settings: Settings, assigned: asyncio.Event | None = None) -> No
         await asyncio.gather(running, monitor, return_exceptions=True)
         await responder.unsubscribe()
         await kafka.stop()
-        await nats.drain()
+        await (nats.drain() if nats.is_connected else nats.close())
         await db.close()
 
 
 async def main() -> None:
-    task = asyncio.create_task(serve(Settings()))
-    asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, task.cancel)
-    with contextlib.suppress(asyncio.CancelledError):
-        await task
+    stopping = asyncio.Event()
+    asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, stopping.set)
+    await serve(Settings(), stopping)
 
 
 if __name__ == "__main__":

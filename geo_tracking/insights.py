@@ -11,22 +11,11 @@ FROM device_latest
 ZONE_SQL = text("""
 SELECT zone.id, zone.name, zone.radius_m, zone.active, zone.version,
        ST_Y(zone.center::geometry) AS latitude, ST_X(zone.center::geometry) AS longitude,
-       CASE
-           WHEN NOT zone.active THEN 0
-           WHEN area.cells IS NULL THEN (
-               SELECT count(*) FROM device_latest AS device
-               WHERE device.reported_at >= now() - interval '60 seconds'
-                 AND ST_DWithin(zone.center, device.position::geography, zone.radius_m)
-           )
-           ELSE (
-               SELECT count(*) FROM device_latest AS device
-               WHERE device.cell = ANY(area.cells)
-                 AND device.reported_at >= now() - interval '60 seconds'
-                 AND ST_DWithin(zone.center, device.position::geography, zone.radius_m)
-           )
-       END AS devices_inside
+       CASE WHEN zone.active
+            THEN zone_occupancy(zone.center, zone.radius_m, zone.footprint,
+                                now() - interval '60 seconds')
+            ELSE 0 END AS devices_inside
 FROM geozones AS zone
-CROSS JOIN LATERAL (SELECT grid_cells(zone.footprint) AS cells) AS area
 WHERE zone.user_id = :user_id
 ORDER BY zone.id
 LIMIT 51

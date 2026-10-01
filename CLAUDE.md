@@ -15,6 +15,8 @@ Take-home submission: real-time geo-tracking on FastAPI, PostGIS, Kafka and NATS
 - **Every fresh sample is matched before the latest-only reduction** in `persist_latest`. Collapsing earlier drops alerts for devices that cross a zone inside one batch.
 - **The upsert stays monotonic** (`WHERE device.reported_at < excluded.reported_at`). It is the guard against a zombie owner during a rebalance.
 - **`zone_footprint` must stay a superset of the geodesic circle.** It is only a candidate filter; `test_footprint_candidates_equal_exact_geography_everywhere` is the proof. Run that test after any change to the function or the matching query.
+- **`grid_cells(area)` must cover every cell a point inside `area` can have**, or snapshots and occupancy silently drop devices. `grid_cell` holds the only cell formula; `test_grid_cells_never_exclude_a_point_inside_the_box` is the proof.
+- **A replayed batch re-emits events only for records identical to the stored row** (same time and position). That is what makes a crash between commit and publish lose nothing, while a conflicting duplicate stays first-wins.
 - **Position subjects are zoom-8 quadkeys, one digit per token** (`fleet.pos.1.2.…`). Viewport wildcards depend on that nesting; changing the level or the token layout breaks routing for every client.
 - **Alert volume never rolls back ingestion.** Bound it with the per-user zone quota and the per-connection queues, never with a per-batch limit; that limit was the original denial-of-service bug.
 - Ingest returns `202` once the report is durable in Kafka. It cannot say whether a sample is stale or a duplicate; the processor decides that.

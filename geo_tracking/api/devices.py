@@ -30,16 +30,17 @@ def bounds(
     return [func.ST_MakeEnvelope(low, south, high, north, 4326) for low, high in spans]
 
 
-async def area(session: Session, envelopes: list[Envelope]) -> ColumnElement[bool]:
-    cells = (await session.execute(select(*[func.grid_cells(item) for item in envelopes]))).one()
+def area(envelopes: list[Envelope]) -> ColumnElement[bool]:
     return or_(
         *[
             and_(
-                DeviceLatest.cell == any_(covered), func.ST_Intersects(DeviceLatest.position, item)
+                or_(
+                    func.grid_cells(item).is_(None),
+                    DeviceLatest.cell == any_(func.grid_cells(item)),
+                ),
+                func.ST_Intersects(DeviceLatest.position, item),
             )
-            if covered is not None
-            else func.ST_Intersects(DeviceLatest.position, item)
-            for item, covered in zip(envelopes, cells, strict=True)
+            for item in envelopes
         ]
     )
 
@@ -64,7 +65,7 @@ async def latest(
         .limit(limit + 1)
     )
     if envelopes:
-        query = query.where(await area(session, envelopes))
+        query = query.where(area(envelopes))
     if after:
         query = query.where(DeviceLatest.device_id > after)
     rows = (await session.execute(query)).mappings().all()

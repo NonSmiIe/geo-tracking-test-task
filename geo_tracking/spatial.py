@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 Record = tuple[str, float, float, int]
 
 WATERMARK_SQL = text("""
-SELECT device_id, (extract(epoch FROM reported_at) * 1000000)::bigint AS reported_us
+SELECT device_id, ST_Y(position), ST_X(position),
+       (extract(epoch FROM reported_at) * 1000000)::bigint
 FROM device_latest WHERE device_id = ANY(CAST(:device_ids AS text[]))
 """)
 
@@ -38,9 +39,9 @@ WHERE device.reported_at < excluded.reported_at
 """)
 
 
-async def watermarks(session: AsyncSession, device_ids: Sequence[str]) -> dict[str, int]:
+async def stored(session: AsyncSession, device_ids: Sequence[str]) -> dict[str, Record]:
     result = await session.execute(WATERMARK_SQL, {"device_ids": list(device_ids)})
-    return dict(result.tuples().all())
+    return {row[0]: (row[0], row[1], row[2], row[3]) for row in result.tuples()}
 
 
 async def match_records(session: AsyncSession, records: Sequence[Record]) -> Sequence[RowMapping]:

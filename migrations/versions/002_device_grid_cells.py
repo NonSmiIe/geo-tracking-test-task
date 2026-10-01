@@ -39,12 +39,12 @@ def upgrade():
     op.execute(GRID_CELL)
     op.execute(GRID_CELLS)
     op.drop_index("device_latest_position", table_name="device_latest")
+    op.execute("ALTER TABLE device_latest SET (fillfactor = 70)")
     op.execute(
         "ALTER TABLE device_latest ADD COLUMN cell integer "
         "GENERATED ALWAYS AS (grid_cell(position)) STORED"
     )
     op.create_index("device_latest_cell", "device_latest", ["cell"])
-    op.execute("ALTER TABLE device_latest SET (fillfactor = 70)")
 
 
 def downgrade():

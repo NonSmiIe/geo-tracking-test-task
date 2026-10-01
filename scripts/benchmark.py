@@ -31,9 +31,7 @@ def fault(value: str) -> str:
 
 
 def observe(url: str, user: str, viewport: dict, prefix: str, ready, stop) -> dict:
-    async def main() -> dict:
-        counts, checksums = Counter(), Counter()
-        latency = {"positions": Histogram(), "inside_report": Histogram()}
+    async def subscribe() -> websockets.ClientConnection:
         socket = await websockets.connect(
             url.replace("http", "ws", 1) + f"/ws?user_id={user}", max_size=None, max_queue=None
         )
@@ -41,45 +39,86 @@ def observe(url: str, user: str, viewport: dict, prefix: str, ready, stop) -> di
         await socket.send(orjson.dumps({"type": "viewport", **viewport}).decode())
         while orjson.loads(await socket.recv())["type"] != "subscribed":
             pass
+        return socket
+
+    async def main() -> dict:
+        counts, checksums = Counter(), Counter()
+        latency = {"positions": Histogram(), "inside_report": Histogram()}
+        closures: list[float] = []
+        socket = await subscribe()
         ready.set()
-        last = time.monotonic()
-        try:
-            while True:
+        started = last = time.monotonic()
+        while True:
+            try:
+                data = await asyncio.wait_for(socket.recv(), 1)
+            except TimeoutError:
+                if stop.is_set() and time.monotonic() - last > 3:
+                    break
+                continue
+            except websockets.ConnectionClosed:
+                closures.append(round(time.monotonic() - started, 2))
+                await asyncio.sleep(0.5)
                 try:
-                    data = await asyncio.wait_for(socket.recv(), 1)
-                except TimeoutError:
-                    if stop.is_set() and time.monotonic() - last > 3:
-                        break
+                    socket = await subscribe()
+                except (OSError, websockets.WebSocketException):
                     continue
-                last = time.monotonic()
-                message = orjson.loads(data)
-                kind = message["type"]
-                if kind not in latency:
+                continue
+            last = time.monotonic()
+            message = orjson.loads(data)
+            kind = message["type"]
+            if kind not in latency:
+                continue
+            now = time.time() * 1_000_000
+            histogram = latency[kind]
+            for item in message["items"]:
+                if kind == "positions":
+                    device, stamp = item[0], item[3]
+                else:
+                    device, stamp = item["device_id"], item["timestamp"]
+                if not device.startswith(prefix):
                     continue
-                now = time.time() * 1_000_000
-                histogram = latency[kind]
-                for item in message["items"]:
-                    if kind == "positions":
-                        device, stamp = item[0], item[3]
-                    else:
-                        device, stamp = item["device_id"], item["timestamp"]
-                    if not device.startswith(prefix):
-                        continue
-                    counts[kind] += 1
-                    checksums[kind] = (checksums[kind] + fingerprint(device, stamp)) % (1 << 64)
-                    histogram.add((now - stamp) / 1_000_000)
-        except websockets.ConnectionClosed as closed:
-            counts["closed_by_server"] = closed.rcvd.code if closed.rcvd else 1006
-        finally:
-            await socket.close()
+                counts[kind] += 1
+                checksums[kind] = (checksums[kind] + fingerprint(device, stamp)) % (1 << 64)
+                histogram.add((now - stamp) / 1_000_000)
+        await socket.close()
         return {
             "counts": dict(counts),
+            "closures_at_seconds": closures,
             "checksums": {key: str(value) for key, value in checksums.items()},
             "latency": {key: value.summary() for key, value in latency.items()},
             "latency_buckets": {key: dict(value.buckets) for key, value in latency.items()},
         }
 
     return asyncio.run(main())
+
+
+async def stored_latest(project: str, prefix: str) -> dict:
+    query = (
+        "SELECT count(*), coalesce(sum((extract(epoch FROM reported_at) * 1000000)::bigint), 0) "
+        f"FROM device_latest WHERE device_id LIKE '{prefix}-%'"
+    )
+    process = await asyncio.create_subprocess_exec(
+        "docker",
+        "compose",
+        "-p",
+        project,
+        "exec",
+        "-T",
+        "db",
+        "psql",
+        "-U",
+        "geo",
+        "-d",
+        "geo",
+        "-tAF",
+        ",",
+        "-c",
+        query,
+        stdout=asyncio.subprocess.PIPE,
+    )
+    stdout, _ = await process.communicate()
+    devices, total = stdout.decode().strip().split(",")
+    return {"devices": int(devices), "timestamp_sum": str(int(total))}
 
 
 async def docker_stats(project: str) -> list[dict]:
@@ -210,6 +249,7 @@ async def benchmark(args: argparse.Namespace) -> dict:
                     await asyncio.sleep(1)
                 stop.set()
                 observed = await asyncio.gather(*watchers)
+                stored = await stored_latest(args.project, prefix)
         finally:
             sampler.cancel()
             await asyncio.gather(sampler, return_exceptions=True)
@@ -235,7 +275,7 @@ async def benchmark(args: argparse.Namespace) -> dict:
             kind: result["counts"].get(kind, 0) == count and result["checksums"].get(kind) == mark
             for kind, (count, mark) in expected.items()
         }
-        checks["not_closed"] = "closed_by_server" not in result["counts"]
+        checks["not_closed"] = not result["closures_at_seconds"]
         for kind, buckets in result.pop("latency_buckets").items():
             combined[kind].merge(Histogram(Counter({int(k): v for k, v in buckets.items()})))
         delivery.append(
@@ -252,6 +292,9 @@ async def benchmark(args: argparse.Namespace) -> dict:
     latency_passed = all(value.get("p95_ms", 100000) < 1000 for value in latency.values())
     workload = assess_workload(generated)
     pipeline = assess_pipeline(acked, baseline, final)
+    pipeline["checks"]["database_holds_every_latest_report"] = stored == generated["latest"]
+    pipeline["stored_latest"] = stored
+    pipeline["passed"] = all(pipeline["checks"].values())
     resources = assess_resources(samples)
     reconciled = all(item["passed"] for item in delivery)
     faults_applied = all(item["exit_code"] == 0 for item in faults) and len(faults) == len(

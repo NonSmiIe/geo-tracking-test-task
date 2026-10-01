@@ -4,7 +4,7 @@ import orjson
 import pytest
 from aiokafka.errors import KafkaTimeoutError
 
-from geo_tracking.ingest import Acknowledgements, Ingest, Overloaded
+from geo_tracking.ingest import Acknowledgements, Ingest, Overloaded, Window
 from geo_tracking.metrics import Metrics
 from geo_tracking.schemas import ReportAdapter
 from geo_tracking.settings import Settings
@@ -80,3 +80,30 @@ async def test_failed_stream_produce_closes_the_socket_and_returns_the_window(
     await asyncio.wait_for(service.stream(socket), 2)
     await asyncio.sleep(0)
     assert socket.closed == 1011 and service.inflight == 0
+
+
+async def test_window_grants_in_order_and_a_large_request_is_not_starved() -> None:
+    window = Window(4)
+    await window.acquire(3)
+    big = asyncio.create_task(window.acquire(4))
+    await asyncio.sleep(0)
+    small = asyncio.create_task(window.acquire(1))
+    await asyncio.sleep(0)
+    assert not big.done() and not small.done()
+    window.release(3)
+    await asyncio.sleep(0)
+    assert big.done() and not small.done()
+    window.release(4)
+    await asyncio.sleep(0)
+    assert small.done() and window.free == 3
+
+
+async def test_window_cancellation_returns_nothing_it_did_not_take() -> None:
+    window = Window(2)
+    await window.acquire(2)
+    waiting = asyncio.create_task(window.acquire(2))
+    await asyncio.sleep(0)
+    waiting.cancel()
+    await asyncio.gather(waiting, return_exceptions=True)
+    window.release(2)
+    assert window.free == 2 and not window.waiters

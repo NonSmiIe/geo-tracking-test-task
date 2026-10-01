@@ -120,3 +120,49 @@ async def test_footprint_candidates_equal_exact_geography_everywhere(settings: S
             assert expected and actual == expected
     finally:
         await db.close()
+
+
+async def test_grid_cells_never_exclude_a_point_inside_the_box(settings: Settings) -> None:
+    rng = random.Random(11)
+    points = [(90, 0), (-90, 0), (0, 180), (0, -180), (90, 180), (-90, -180), (56.75, 24.25)]
+    points += [(rng.uniform(-90, 90), rng.uniform(-180, 180)) for _ in range(1500)]
+    boxes = [(90, -10, 90, 10), (-90, 170, -89, 180), (-5, 180, 5, 180), (-5, 179.9, 5, 180)]
+    boxes += [(56.5, 23.5, 57.5, 25), (56.75, 24.25, 56.75, 24.25), (-90, -180, 90, 180)]
+    for _ in range(200):
+        south, north = sorted(rng.uniform(-90, 90) for _ in range(2))
+        west, east = sorted(rng.uniform(-180, 180) for _ in range(2))
+        boxes.append((south, west, north, east))
+    db = Database(settings.model_copy(update={"database_timeout_ms": 60000}))
+    try:
+        async with db.sessions() as session, session.begin():
+            missed = (
+                await session.execute(
+                    text("""
+                WITH box AS MATERIALIZED (
+                    SELECT area, grid_cells(area) AS cells
+                    FROM unnest(CAST(:s AS float8[]), CAST(:w AS float8[]),
+                                CAST(:n AS float8[]), CAST(:e AS float8[])) AS b(s, w, n, e),
+                         LATERAL (SELECT ST_MakeEnvelope(b.w, b.s, b.e, b.n, 4326) AS area) AS g
+                ), point AS MATERIALIZED (
+                    SELECT geom, grid_cell(geom) AS cell
+                    FROM unnest(CAST(:lats AS float8[]), CAST(:lons AS float8[])) AS p(lat, lon),
+                         LATERAL (SELECT ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326) AS geom) AS g
+                )
+                SELECT count(*) FROM box, point
+                WHERE box.cells IS NOT NULL
+                  AND ST_Intersects(point.geom, box.area)
+                  AND NOT point.cell = ANY(box.cells)
+            """),
+                    {
+                        "lats": [p[0] for p in points],
+                        "lons": [p[1] for p in points],
+                        "s": [b[0] for b in boxes],
+                        "w": [b[1] for b in boxes],
+                        "n": [b[2] for b in boxes],
+                        "e": [b[3] for b in boxes],
+                    },
+                )
+            ).scalar_one()
+            assert missed == 0
+    finally:
+        await db.close()

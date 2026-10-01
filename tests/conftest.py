@@ -64,7 +64,8 @@ class Worker:
     async def main(self) -> None:
         self.loop = asyncio.get_running_loop()
         assigned = asyncio.Event()
-        self.task = asyncio.create_task(serve(self.settings, assigned))
+        self.stopping = asyncio.Event()
+        self.task = asyncio.create_task(serve(self.settings, self.stopping, assigned))
         await assigned.wait()
         self.ready.set()
         try:
@@ -78,7 +79,7 @@ class Worker:
         return self
 
     def stop(self) -> None:
-        self.loop.call_soon_threadsafe(self.task.cancel)
+        self.loop.call_soon_threadsafe(self.stopping.set)
         self.thread.join(15)
 
 

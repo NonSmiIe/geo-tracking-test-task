@@ -6,7 +6,7 @@ import math
 import os
 import random
 import time
-from collections import Counter
+from collections import Counter, deque
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -87,11 +87,19 @@ class Config:
 
 
 @dataclass
+class Lane:
+    pending: deque[str] = field(default_factory=deque)
+    confirmed: int = 0
+    drained: bool = False
+
+
+@dataclass
 class Shard:
     counters: Counter = field(default_factory=Counter)
     schedule_lag: Histogram = field(default_factory=Histogram)
     latency: Histogram = field(default_factory=Histogram)
     checksum: int = 0
+    latest: dict[int, int] = field(default_factory=dict)
     probes: list[list[int]] = field(default_factory=list)
 
 
@@ -156,34 +164,48 @@ async def produce(config: Config, index: int, probes: list[list[str]]) -> Shard:
     lanes = config.connections if config.transport == "ws" else 1
     queues = [asyncio.Queue(maxsize=max(1, config.queue_size // lanes)) for _ in range(lanes)]
 
+    async def acknowledged(socket: websockets.ClientConnection, state: Lane) -> None:
+        async for data in socket:
+            count = orjson.loads(data)["count"]
+            for _ in range(count - state.confirmed):
+                state.pending.popleft()
+            shard.counters["acked"] += count - state.confirmed
+            state.confirmed = count
+            if state.drained and not state.pending:
+                return
+        raise websockets.ConnectionClosedError(None, None)
+
     async def stream(lane: asyncio.Queue) -> None:
         url = config.url.replace("http", "ws", 1) + "/ingest"
-        sent = 0
-        acked = 0
-        done = asyncio.Event()
-        async with websockets.connect(url, max_queue=None, write_limit=1 << 20) as socket:
-
-            async def acks() -> None:
-                nonlocal acked
-                async for data in socket:
-                    acked = orjson.loads(data)["count"]
-                    if done.is_set() and acked >= sent:
-                        return
-
-            reader = asyncio.create_task(acks())
+        state = Lane()
+        while True:
             try:
-                while (message := await lane.get()) is not None:
-                    await socket.send(message)
-                    sent += 1
-                done.set()
-                await socket.send('{"type":"flush"}')
-                await asyncio.wait_for(reader, 60)
+                async with websockets.connect(url, max_queue=None, write_limit=1 << 20) as socket:
+                    state.confirmed = 0
+                    reader = asyncio.create_task(acknowledged(socket, state))
+                    try:
+                        shard.counters["resent"] += len(state.pending)
+                        for message in tuple(state.pending):
+                            await socket.send(message)
+                        while not state.drained:
+                            message = await lane.get()
+                            if message is None:
+                                state.drained = True
+                                break
+                            state.pending.append(message)
+                            shard.counters["sent"] += 1
+                            await socket.send(message)
+                        await socket.send('{"type":"flush"}')
+                        await asyncio.wait_for(reader, 60)
+                        return
+                    finally:
+                        reader.cancel()
             except (TimeoutError, websockets.ConnectionClosed, OSError):
-                shard.counters["transport_errors"] += 1
-            finally:
-                reader.cancel()
-                shard.counters["sent"] += sent
-                shard.counters["acked"] += acked
+                shard.counters["reconnects"] += 1
+                if shard.counters["reconnects"] > 64 * config.connections:
+                    shard.counters["transport_errors"] += len(state.pending)
+                    return
+                await asyncio.sleep(0.5)
 
     async def post(lane: asyncio.Queue, client: aiohttp.ClientSession) -> None:
         while True:
@@ -250,6 +272,7 @@ async def produce(config: Config, index: int, probes: list[list[str]]) -> Shard:
             except asyncio.QueueFull:
                 shard.counters["generator_dropped"] += 1
             else:
+                shard.latest[local] = timestamp
                 mark = fingerprint(device_id, timestamp)
                 shard.checksum = (shard.checksum + mark) % (1 << 64)
                 if probes:
@@ -292,6 +315,8 @@ def shard_main(config: Config, index: int, probes: list[list[str]]) -> dict:
         "schedule_lag": dict(shard.schedule_lag.buckets),
         "latency": dict(shard.latency.buckets),
         "checksum": shard.checksum,
+        "latest_devices": len(shard.latest),
+        "latest_sum": sum(shard.latest.values()),
         "probes": shard.probes,
     }
 
@@ -308,6 +333,7 @@ async def run(config: Config, probes: list[list[str]] | None = None) -> dict:
             ]
         )
     counters, lag, latency, checksum = Counter(), Histogram(), Histogram(), 0
+    latest_devices = latest_sum = 0
     totals = [[0, 0] for _ in probes]
     for shard in shards:
         high = shard["counters"].pop("queue_high_water", 0)
@@ -316,6 +342,8 @@ async def run(config: Config, probes: list[list[str]] | None = None) -> dict:
         lag.merge(Histogram(Counter({int(k): v for k, v in shard["schedule_lag"].items()})))
         latency.merge(Histogram(Counter({int(k): v for k, v in shard["latency"].items()})))
         checksum = (checksum + shard["checksum"]) % (1 << 64)
+        latest_devices += shard["latest_devices"]
+        latest_sum += shard["latest_sum"]
         for total, (count, mark) in zip(totals, shard["probes"], strict=True):
             total[0] += count
             total[1] = (total[1] + mark) % (1 << 64)
@@ -329,6 +357,7 @@ async def run(config: Config, probes: list[list[str]] | None = None) -> dict:
         "schedule_lag": lag.summary(),
         "http_latency": latency.summary(),
         "checksum": str(checksum),
+        "latest": {"devices": latest_devices, "timestamp_sum": str(latest_sum)},
         "probes": [{"count": count, "checksum": str(mark)} for count, mark in totals],
     }
 
