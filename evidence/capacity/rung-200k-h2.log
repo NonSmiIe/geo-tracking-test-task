@@ -1,0 +1,87 @@
+{
+  "acceptance_passed": true,
+  "workload": {
+    "passed": true,
+    "checks": {
+      "exact_population": true,
+      "no_loss_or_overload": true,
+      "sustained_rate": true,
+      "scheduling_p99": true,
+      "scheduling_tail_fraction": true,
+      "scheduling_max": true
+    },
+    "late_fraction": 0.0,
+    "minimum_acked_rate": 39600.0
+  },
+  "pipeline": {
+    "passed": true,
+    "checks": {
+      "every_acked_report_committed": true,
+      "consumer_lag_drained": true,
+      "no_session_evicted": true,
+      "no_failed_batches": true
+    },
+    "committed": 12000000
+  },
+  "delivery_reconciled": true,
+  "delivery_latency": {
+    "positions": {
+      "count": 38494441,
+      "max_ms": 3144,
+      "p50_ms": 114,
+      "p95_ms": 448,
+      "p99_ms": 768
+    },
+    "inside_report": {
+      "count": 24000000,
+      "max_ms": 3147,
+      "p50_ms": 117,
+      "p95_ms": 457,
+      "p99_ms": 778
+    }
+  },
+  "sessions": [
+    {
+      "counts": {
+        "positions": 12000000,
+        "inside_report": 12000000
+      },
+      "checks": {
+        "positions": true,
+        "inside_report": true,
+        "not_closed": true
+      }
+    },
+    {
+      "counts": {
+        "positions": 12000000,
+        "inside_report": 12000000
+      },
+      "checks": {
+        "positions": true,
+        "inside_report": true,
+        "not_closed": true
+      }
+    },
+    {
+      "counts": {
+        "positions": 12000000
+      },
+      "checks": {
+        "positions": true,
+        "inside_report": true,
+        "not_closed": true
+      }
+    },
+    {
+      "counts": {
+        "positions": 2494441
+      },
+      "checks": {
+        "positions": true,
+        "inside_report": true,
+        "not_closed": true
+      }
+    }
+  ]
+}
