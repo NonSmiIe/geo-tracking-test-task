@@ -40,6 +40,22 @@ async def owned(session: Session, zone_id: UUID, user: str) -> Zone:
     return zone
 
 
+OVERLAP_SQL = text("""
+SELECT count(*) FROM geozones AS other, geozones AS zone
+WHERE zone.id = :zone_id AND other.user_id = zone.user_id AND other.id <> zone.id
+  AND other.active AND other.footprint && zone.footprint
+  AND ST_DWithin(other.center, zone.center, other.radius_m + zone.radius_m)
+""")
+
+
+async def bound_overlap(session: Session, zone: Zone, limit: int) -> None:
+    if not zone.active:
+        return
+    overlapping = (await session.execute(OVERLAP_SQL, {"zone_id": zone.id})).scalar_one()
+    if overlapping > limit:
+        raise HTTPException(409, "zone_overlap_exceeded")
+
+
 async def present(session: Session, zone_id: UUID) -> dict[str, Any]:
     return dict((await session.execute(zone_query().where(Zone.id == zone_id))).mappings().one())
 
@@ -64,6 +80,7 @@ async def create_zone(
         )
         session.add(zone)
         await session.flush()
+        await bound_overlap(session, zone, services.settings.max_zone_overlap)
         row = await present(session, zone.id)
     await zones_changed(services.nats, services.subjects, user)
     return row
@@ -103,6 +120,7 @@ async def update_zone(
     zone_id: UUID, payload: ZoneUpdate, user: User, session: Session, services: ServicesDep
 ) -> dict[str, Any]:
     async with session.begin():
+        await session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:user))"), {"user": user})
         zone = await owned(session, zone_id, user)
         values = payload.model_dump(exclude_unset=True)
         if "latitude" in values:
@@ -111,6 +129,8 @@ async def update_zone(
             setattr(zone, key, value)
         zone.version += 1
         await session.flush()
+        await session.refresh(zone)
+        await bound_overlap(session, zone, services.settings.max_zone_overlap)
         row = await present(session, zone.id)
     await zones_changed(services.nats, services.subjects, user)
     return row

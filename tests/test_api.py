@@ -32,6 +32,7 @@ def test_owner_scoped_crud_and_version(http: httpx.Client) -> None:
         {"radius_m": 0},
         {"radius_m": "Infinity"},
         {"radius_m": "NaN"},
+        {"radius_m": 500001},
         {"latitude": 91},
         {"longitude": -181},
         {"user_id": "bob"},
@@ -136,3 +137,22 @@ def test_health_and_prometheus_exposition_on_every_role(stack, http: httpx.Clien
     assert httpx.get(processor + "/health/live").json() == {"status": "alive"}
     gateway = stack.ws_url.replace("ws", "http", 1)
     assert ("fleet_gateway_connections", ()) in samples(httpx.get(gateway + "/metrics").text)
+
+
+def test_a_user_cannot_stack_more_than_fifty_zones_over_one_point(http: httpx.Client) -> None:
+    for index in range(51):
+        zone(http, name=f"stack-{index}", radius_m=5000)
+    response = http.post(
+        "/geozones",
+        json={"name": "one too many", "latitude": 56.9496, "longitude": 24.1052, "radius_m": 5000},
+        headers={"X-User-ID": "alice"},
+    )
+    assert response.status_code == 409 and response.json()["detail"] == "zone_overlap_exceeded"
+    far = zone(http, name="elsewhere", latitude=10, longitude=10, radius_m=5000)
+    moved = http.patch(
+        f"/geozones/{far['id']}",
+        json={"latitude": 56.95, "longitude": 24.1},
+        headers={"X-User-ID": "alice"},
+    )
+    assert moved.status_code == 409
+    zone(http, owner="bob", radius_m=5000)

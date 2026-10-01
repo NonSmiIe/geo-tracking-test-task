@@ -7,7 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 Latitude = Annotated[float, Field(ge=-90, le=90, allow_inf_nan=False)]
 Longitude = Annotated[float, Field(ge=-180, le=180, allow_inf_nan=False)]
-Radius = Annotated[float, Field(gt=0, allow_inf_nan=False)]
+MAX_RADIUS_M = 500_000
+Radius = Annotated[float, Field(gt=0, le=MAX_RADIUS_M, allow_inf_nan=False)]
 IDENTIFIER = r"^[\w.-]+$"
 Identifier = Annotated[str, Field(min_length=1, max_length=96, pattern=IDENTIFIER)]
 

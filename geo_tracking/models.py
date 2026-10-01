@@ -25,7 +25,7 @@ class Base(DeclarativeBase):
 class Zone(Base):
     __tablename__ = "geozones"
     __table_args__ = (
-        CheckConstraint("radius_m > 0 AND radius_m < 'Infinity'::float8", name="finite_radius"),
+        CheckConstraint("radius_m > 0 AND radius_m <= 500000", name="bounded_radius"),
         Index("geozones_owner", "user_id"),
         Index(
             "geozones_active_footprint",

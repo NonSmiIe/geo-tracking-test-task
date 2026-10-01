@@ -98,14 +98,14 @@ def test_inside_then_outside_in_one_batch_keeps_the_inside_alert(stack, http) ->
 
 
 def test_dense_overlap_never_rejects_ingestion(stack, http) -> None:
-    for index in range(60):
+    for index in range(51):
         zone(http, name=f"overlap-{index}", radius_m=10000)
     owner = dashboard(stack, "alice")
     reports = [report(f"device-{i}", offset=1, latitude=56.95 if i % 4 else 10) for i in range(200)]
     statuses = {http.post("/locations", json=item).status_code for item in reports}
     assert statuses == {202}
-    alerts = collect(owner, "inside_report", 150 * 60, timeout=30)
-    assert len({(item["device_id"], item["zone_id"]) for item in alerts}) == 150 * 60
+    alerts = collect(owner, "inside_report", 150 * 51, timeout=30)
+    assert len({(item["device_id"], item["zone_id"]) for item in alerts}) == 150 * 51
     owner.close()
 
 

@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     alert_frame_items: int = Field(default=1000, ge=1)
 
     max_zones_per_user: int = Field(default=1000, ge=1)
+    max_zone_overlap: int = Field(default=50, ge=0)
     max_connections: int = Field(default=128, ge=1)
     viewport_tiles: int = Field(default=16, ge=1)
     websocket_queue_bytes: int = Field(default=8388608, ge=1024)
