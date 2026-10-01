@@ -1,0 +1,4871 @@
+{
+  "acceptance_policy": "fault-v1",
+  "faults_applied": true,
+  "acceptance_passed": true,
+  "fault_run": {
+    "passed": true,
+    "checks": {
+      "exact_population": true,
+      "no_loss_or_overload": true,
+      "database_holds_every_latest_report": true,
+      "consumer_lag_drained": true,
+      "open_sessions_missed_nothing_and_closed_ones_resumed": true
+    },
+    "sessions": {
+      "0": true,
+      "1": true,
+      "2": true,
+      "3": true
+    }
+  },
+  "started_at": "2026-10-01T21:57:22.705028+00:00",
+  "fixture": {
+    "devices": 100000,
+    "interval_seconds": 5,
+    "duration_seconds": 180.0,
+    "zones": 100,
+    "coverage_zone_radius_m": 300000,
+    "spread_km": 150,
+    "probe_viewport": {
+      "south": 56.8,
+      "west": 23.8,
+      "north": 57.1,
+      "east": 24.4
+    },
+    "sessions": [
+      {
+        "user": "bench-cdb3143c-alice",
+        "viewport": {
+          "south": -90,
+          "west": -180,
+          "north": 90,
+          "east": 180
+        }
+      },
+      {
+        "user": "bench-cdb3143c-alice",
+        "viewport": {
+          "south": -90,
+          "west": -180,
+          "north": 90,
+          "east": 180
+        }
+      },
+      {
+        "user": "bench-cdb3143c-bob",
+        "viewport": {
+          "south": -90,
+          "west": -180,
+          "north": 90,
+          "east": 180
+        }
+      },
+      {
+        "user": "bench-cdb3143c-bob",
+        "viewport": {
+          "south": 56.8,
+          "west": 23.8,
+          "north": 57.1,
+          "east": 24.4
+        }
+      }
+    ]
+  },
+  "faults": [
+    {
+      "at_seconds": 62.23,
+      "fault": "60:restart:geo-tracking-test-task-kafka-1",
+      "exit_code": 0,
+      "output": "geo-tracking-test-task-kafka-1"
+    }
+  ],
+  "workload": {
+    "passed": true,
+    "checks": {
+      "exact_population": true,
+      "no_loss_or_overload": true,
+      "sustained_rate": true,
+      "scheduling_p99": true,
+      "scheduling_tail_fraction": true,
+      "scheduling_max": true
+    },
+    "late_fraction": 0.0,
+    "minimum_acked_rate": 19800.0
+  },
+  "pipeline": {
+    "passed": true,
+    "checks": {
+      "counters_never_reset": true,
+      "every_acked_report_committed": true,
+      "consumer_lag_drained": true,
+      "no_session_evicted": true,
+      "no_slow_consumer": true,
+      "no_failed_batches": true,
+      "database_holds_every_latest_report": true
+    },
+    "committed": 3600000.0,
+    "stale": 1328.0,
+    "duplicate": 1213.0,
+    "replayed": 0.0,
+    "stored_latest": {
+      "devices": 100000,
+      "timestamp_sum": "179089202333957339587"
+    }
+  },
+  "delivery_reconciled": true,
+  "delivery_latency": {
+    "positions": {
+      "count": 11553167,
+      "max_ms": 17973,
+      "p50_ms": 64,
+      "p95_ms": 8973,
+      "p99_ms": 15162
+    },
+    "inside_report": {
+      "count": 7200000,
+      "max_ms": 17979,
+      "p50_ms": 65,
+      "p95_ms": 9062,
+      "p99_ms": 15194
+    }
+  },
+  "latency_passed": false,
+  "resources": {
+    "passed": true,
+    "checks": {
+      "samples_present": true,
+      "geo-tracking-test-task-processor-11_memory_headroom": true,
+      "geo-tracking-test-task-processor-11_memory_stable": true,
+      "geo-tracking-test-task-processor-9_memory_headroom": true,
+      "geo-tracking-test-task-processor-9_memory_stable": true,
+      "geo-tracking-test-task-api-4_memory_headroom": true,
+      "geo-tracking-test-task-api-4_memory_stable": true,
+      "geo-tracking-test-task-api-1_memory_headroom": true,
+      "geo-tracking-test-task-api-1_memory_stable": true,
+      "geo-tracking-test-task-processor-10_memory_headroom": true,
+      "geo-tracking-test-task-processor-10_memory_stable": true,
+      "geo-tracking-test-task-api-2_memory_headroom": true,
+      "geo-tracking-test-task-api-2_memory_stable": true,
+      "geo-tracking-test-task-processor-7_memory_headroom": true,
+      "geo-tracking-test-task-processor-7_memory_stable": true,
+      "geo-tracking-test-task-api-6_memory_headroom": true,
+      "geo-tracking-test-task-api-6_memory_stable": true,
+      "geo-tracking-test-task-processor-2_memory_headroom": true,
+      "geo-tracking-test-task-processor-2_memory_stable": true,
+      "geo-tracking-test-task-processor-4_memory_headroom": true,
+      "geo-tracking-test-task-processor-4_memory_stable": true,
+      "geo-tracking-test-task-processor-6_memory_headroom": true,
+      "geo-tracking-test-task-processor-6_memory_stable": true,
+      "geo-tracking-test-task-processor-8_memory_headroom": true,
+      "geo-tracking-test-task-processor-8_memory_stable": true,
+      "geo-tracking-test-task-db-1_memory_headroom": true,
+      "geo-tracking-test-task-db-1_memory_stable": true,
+      "geo-tracking-test-task-gateway-2_memory_headroom": true,
+      "geo-tracking-test-task-gateway-2_memory_stable": true,
+      "geo-tracking-test-task-gateway-1_memory_headroom": true,
+      "geo-tracking-test-task-gateway-1_memory_stable": true,
+      "geo-tracking-test-task-edge-1_memory_headroom": true,
+      "geo-tracking-test-task-edge-1_memory_stable": true,
+      "geo-tracking-test-task-postgres-exporter-1_memory_headroom": true,
+      "geo-tracking-test-task-postgres-exporter-1_memory_stable": true,
+      "geo-tracking-test-task-nats-exporter-1_memory_headroom": true,
+      "geo-tracking-test-task-nats-exporter-1_memory_stable": true,
+      "geo-tracking-test-task-kafka-exporter-1_memory_headroom": true,
+      "geo-tracking-test-task-kafka-exporter-1_memory_stable": true,
+      "geo-tracking-test-task-grafana-1_memory_headroom": true,
+      "geo-tracking-test-task-grafana-1_memory_stable": true,
+      "geo-tracking-test-task-nats-1_memory_headroom": true,
+      "geo-tracking-test-task-nats-1_memory_stable": true,
+      "geo-tracking-test-task-kafka-1_memory_headroom": true,
+      "geo-tracking-test-task-kafka-1_memory_stable": true,
+      "geo-tracking-test-task-prometheus-1_memory_headroom": true,
+      "geo-tracking-test-task-prometheus-1_memory_stable": true
+    },
+    "containers": {
+      "geo-tracking-test-task-processor-11": {
+        "peak_bytes": 90764738.56,
+        "limit_bytes": 402653184.0,
+        "growth_bytes": 3365928.9600000083,
+        "cpu_median_percent": 24.12,
+        "cpu_peak_percent": 41.59
+      },
+      "geo-tracking-test-task-processor-9": {
+        "peak_bytes": 92473917.44,
+        "limit_bytes": 402653184.0,
+        "growth_bytes": 3135242.2399999946,
+        "cpu_median_percent": 25.18,
+        "cpu_peak_percent": 55.06
+      },
+      "geo-tracking-test-task-api-4": {
+        "peak_bytes": 111463628.8,
+        "limit_bytes": 335544320.0,
+        "growth_bytes": 367001.60000002384,
+        "cpu_median_percent": 33.675,
+        "cpu_peak_percent": 86.61
+      },
+      "geo-tracking-test-task-api-1": {
+        "peak_bytes": 114504499.2,
+        "limit_bytes": 335544320.0,
+        "growth_bytes": 8262778.879999995,
+        "cpu_median_percent": 32.620000000000005,
+        "cpu_peak_percent": 86.61
+      },
+      "geo-tracking-test-task-processor-10": {
+        "peak_bytes": 97863598.08,
+        "limit_bytes": 402653184.0,
+        "growth_bytes": 1205862.399999991,
+        "cpu_median_percent": 24.915,
+        "cpu_peak_percent": 59.55
+      },
+      "geo-tracking-test-task-api-2": {
+        "peak_bytes": 113141350.4,
+        "limit_bytes": 335544320.0,
+        "growth_bytes": -209715.20000000298,
+        "cpu_median_percent": 33.075,
+        "cpu_peak_percent": 91.32
+      },
+      "geo-tracking-test-task-processor-7": {
+        "peak_bytes": 92536832.0,
+        "limit_bytes": 402653184.0,
+        "growth_bytes": 3706716.1599999964,
+        "cpu_median_percent": 25.845,
+        "cpu_peak_percent": 58.46
+      },
+      "geo-tracking-test-task-api-6": {
+        "peak_bytes": 114294784.0,
+        "limit_bytes": 335544320.0,
+        "growth_bytes": 52428.80000001192,
+        "cpu_median_percent": 33.655,
+        "cpu_peak_percent": 91.04
+      },
+      "geo-tracking-test-task-processor-2": {
+        "peak_bytes": 88814387.2,
+        "limit_bytes": 402653184.0,
+        "growth_bytes": 283115.5199999958,
+        "cpu_median_percent": 25.87,
+        "cpu_peak_percent": 60.75
+      },
+      "geo-tracking-test-task-processor-4": {
+        "peak_bytes": 90596966.4,
+        "limit_bytes": 402653184.0,
+        "growth_bytes": 4173332.480000004,
+        "cpu_median_percent": 25.384999999999998,
+        "cpu_peak_percent": 57.08
+      },
+      "geo-tracking-test-task-processor-6": {
+        "peak_bytes": 97936998.4,
+        "limit_bytes": 402653184.0,
+        "growth_bytes": 7733248.0,
+        "cpu_median_percent": 24.105,
+        "cpu_peak_percent": 57.47
+      },
+      "geo-tracking-test-task-processor-8": {
+        "peak_bytes": 90135592.96,
+        "limit_bytes": 402653184.0,
+        "growth_bytes": 3974103.0399999917,
+        "cpu_median_percent": 24.915,
+        "cpu_peak_percent": 57.51
+      },
+      "geo-tracking-test-task-db-1": {
+        "peak_bytes": 454977126.4,
+        "limit_bytes": 1610612736.0,
+        "growth_bytes": 1258291.199999988,
+        "cpu_median_percent": 76.25,
+        "cpu_peak_percent": 96.77
+      },
+      "geo-tracking-test-task-gateway-2": {
+        "peak_bytes": 55385784.32,
+        "limit_bytes": 335544320.0,
+        "growth_bytes": -110100.47999999672,
+        "cpu_median_percent": 49.385000000000005,
+        "cpu_peak_percent": 58.16
+      },
+      "geo-tracking-test-task-gateway-1": {
+        "peak_bytes": 55616471.04,
+        "limit_bytes": 335544320.0,
+        "growth_bytes": 104857.59999999404,
+        "cpu_median_percent": 24.200000000000003,
+        "cpu_peak_percent": 38.72
+      },
+      "geo-tracking-test-task-edge-1": {
+        "peak_bytes": 24463278.08,
+        "limit_bytes": 268435456.0,
+        "growth_bytes": -1499463.6799999997,
+        "cpu_median_percent": 46.364999999999995,
+        "cpu_peak_percent": 50.1
+      },
+      "geo-tracking-test-task-postgres-exporter-1": {
+        "peak_bytes": 22586327.04,
+        "limit_bytes": 134217728.0,
+        "growth_bytes": -5275385.8560000025,
+        "cpu_median_percent": 0.0,
+        "cpu_peak_percent": 3.51
+      },
+      "geo-tracking-test-task-nats-exporter-1": {
+        "peak_bytes": 17616076.8,
+        "limit_bytes": 67108864.0,
+        "growth_bytes": -560988.1600000001,
+        "cpu_median_percent": 0.035,
+        "cpu_peak_percent": 1.4
+      },
+      "geo-tracking-test-task-kafka-exporter-1": {
+        "peak_bytes": 34770780.16,
+        "limit_bytes": 134217728.0,
+        "growth_bytes": 2453667.84,
+        "cpu_median_percent": 0.0,
+        "cpu_peak_percent": 9.81
+      },
+      "geo-tracking-test-task-grafana-1": {
+        "peak_bytes": 213804646.4,
+        "limit_bytes": 268435456.0,
+        "growth_bytes": -13112442.879999995,
+        "cpu_median_percent": 0.16,
+        "cpu_peak_percent": 3.93
+      },
+      "geo-tracking-test-task-nats-1": {
+        "peak_bytes": 19419627.52,
+        "limit_bytes": 268435456.0,
+        "growth_bytes": -2799697.920000002,
+        "cpu_median_percent": 7.045,
+        "cpu_peak_percent": 9.24
+      },
+      "geo-tracking-test-task-kafka-1": {
+        "peak_bytes": 889402163.2,
+        "limit_bytes": 1610612736.0,
+        "growth_bytes": -58405683.20000005,
+        "cpu_median_percent": 54.115,
+        "cpu_peak_percent": 174.05
+      },
+      "geo-tracking-test-task-prometheus-1": {
+        "peak_bytes": 192308838.4,
+        "limit_bytes": 805306368.0,
+        "growth_bytes": -3565158.399999976,
+        "cpu_median_percent": 0.76,
+        "cpu_peak_percent": 5.44
+      }
+    }
+  },
+  "generator": {
+    "configuration": {
+      "url": "http://127.0.0.1:8097",
+      "devices": 100000,
+      "interval": 5,
+      "duration": 180.0,
+      "processes": 6,
+      "connections": 8,
+      "transport": "ws",
+      "concurrency": 64,
+      "batch_size": 100,
+      "queue_size": 8192,
+      "seed": 42,
+      "latitude": 56.9496,
+      "longitude": 24.1052,
+      "spread_km": 150,
+      "synchronized": false,
+      "prefix": "bench-cdb3143c",
+      "start_at": 1790891845.839253
+    },
+    "counters": {
+      "expected_scheduled": 3600000,
+      "resent": 201578,
+      "scheduled": 3600000,
+      "sent": 3600000,
+      "acked": 3600000,
+      "reconnects": 48,
+      "queue_high_water": 389
+    },
+    "elapsed_seconds": 180.07417511940002,
+    "acked_reports_per_second": 19991.7617149321,
+    "offered_reports_per_second": 20000.0,
+    "schedule_lag": {
+      "count": 3600000,
+      "max_ms": 37,
+      "p50_ms": 1,
+      "p95_ms": 1,
+      "p99_ms": 2
+    },
+    "http_latency": {
+      "count": 0
+    },
+    "checksum": "12220355739641553773",
+    "latest": {
+      "devices": 100000,
+      "timestamp_sum": "179089202333957339587"
+    },
+    "probes": [
+      {
+        "count": 753167,
+        "checksum": "4513788943414210064"
+      }
+    ]
+  },
+  "sessions": [
+    {
+      "session": 0,
+      "user": "bench-cdb3143c-alice",
+      "viewport": {
+        "south": -90,
+        "west": -180,
+        "north": 90,
+        "east": 180
+      },
+      "counts": {
+        "positions": 3600000,
+        "inside_report": 3600000
+      },
+      "duplicates": {},
+      "closures_at_seconds": [],
+      "received_after_last_closure": {
+        "positions": 3600000,
+        "inside_report": 3600000
+      },
+      "checksums": {
+        "positions": "12220355739641553773",
+        "inside_report": "12220355739641553773"
+      },
+      "latency": {
+        "positions": {
+          "count": 3600000,
+          "max_ms": 17931,
+          "p50_ms": 65,
+          "p95_ms": 9017,
+          "p99_ms": 15181
+        },
+        "inside_report": {
+          "count": 3600000,
+          "max_ms": 17937,
+          "p50_ms": 66,
+          "p95_ms": 9025,
+          "p99_ms": 15189
+        }
+      },
+      "checks": {
+        "positions": true,
+        "inside_report": true,
+        "not_closed": true
+      },
+      "passed": true
+    },
+    {
+      "session": 1,
+      "user": "bench-cdb3143c-alice",
+      "viewport": {
+        "south": -90,
+        "west": -180,
+        "north": 90,
+        "east": 180
+      },
+      "counts": {
+        "positions": 3600000,
+        "inside_report": 3600000
+      },
+      "duplicates": {},
+      "closures_at_seconds": [],
+      "received_after_last_closure": {
+        "positions": 3600000,
+        "inside_report": 3600000
+      },
+      "checksums": {
+        "positions": "12220355739641553773",
+        "inside_report": "12220355739641553773"
+      },
+      "latency": {
+        "positions": {
+          "count": 3600000,
+          "max_ms": 17973,
+          "p50_ms": 64,
+          "p95_ms": 9090,
+          "p99_ms": 15189
+        },
+        "inside_report": {
+          "count": 3600000,
+          "max_ms": 17979,
+          "p50_ms": 65,
+          "p95_ms": 9098,
+          "p99_ms": 15197
+        }
+      },
+      "checks": {
+        "positions": true,
+        "inside_report": true,
+        "not_closed": true
+      },
+      "passed": true
+    },
+    {
+      "session": 2,
+      "user": "bench-cdb3143c-bob",
+      "viewport": {
+        "south": -90,
+        "west": -180,
+        "north": 90,
+        "east": 180
+      },
+      "counts": {
+        "positions": 3600000
+      },
+      "duplicates": {},
+      "closures_at_seconds": [],
+      "received_after_last_closure": {
+        "positions": 3600000
+      },
+      "checksums": {
+        "positions": "12220355739641553773"
+      },
+      "latency": {
+        "positions": {
+          "count": 3600000,
+          "max_ms": 17673,
+          "p50_ms": 62,
+          "p95_ms": 8806,
+          "p99_ms": 15108
+        },
+        "inside_report": {
+          "count": 0
+        }
+      },
+      "checks": {
+        "positions": true,
+        "inside_report": true,
+        "not_closed": true
+      },
+      "passed": true
+    },
+    {
+      "session": 3,
+      "user": "bench-cdb3143c-bob",
+      "viewport": {
+        "south": 56.8,
+        "west": 23.8,
+        "north": 57.1,
+        "east": 24.4
+      },
+      "counts": {
+        "positions": 753167
+      },
+      "duplicates": {},
+      "closures_at_seconds": [],
+      "received_after_last_closure": {
+        "positions": 753167
+      },
+      "checksums": {
+        "positions": "4513788943414210064"
+      },
+      "latency": {
+        "positions": {
+          "count": 753167,
+          "max_ms": 17863,
+          "p50_ms": 65,
+          "p95_ms": 9010,
+          "p99_ms": 15178
+        },
+        "inside_report": {
+          "count": 0
+        }
+      },
+      "checks": {
+        "positions": true,
+        "inside_report": true,
+        "not_closed": true
+      },
+      "passed": true
+    }
+  ],
+  "metrics_baseline": {
+    "accepted": 52292938.0,
+    "committed": 59776957.0,
+    "stale": 2262.0,
+    "duplicate": 6454.0,
+    "replayed": 976.0,
+    "failed_batches": 24.0,
+    "evicted": null,
+    "slow_consumers": 0.0,
+    "consumer_lag": 0.0
+  },
+  "metrics_final": {
+    "accepted": 55895479.0,
+    "committed": 63376957.0,
+    "stale": 3590.0,
+    "duplicate": 7667.0,
+    "replayed": 976.0,
+    "failed_batches": 24.0,
+    "evicted": null,
+    "slow_consumers": 0.0,
+    "consumer_lag": 0.0,
+    "counter_resets": 0.0
+  },
+  "samples": [
+    {
+      "sampled_at": "2026-10-01T21:57:22.705028+00:00",
+      "metrics": {
+        "accepted_per_second": 3646.6538816451716,
+        "committed_per_second": 2648.249579204157,
+        "consumer_lag": 0.0,
+        "freshness_p95_seconds": 0.09961334819562492,
+        "batch_p95_seconds": 0.0241048545979292,
+        "api_loop_lag_p99_seconds": 0.004831305325285745,
+        "database_statement_seconds_per_second": 0.07024512565456854
+      },
+      "containers": [
+        {
+          "BlockIO": "46.6MB / 0B",
+          "CPUPerc": "0.79%",
+          "Container": "geo-tracking-test-task-processor-11",
+          "ID": "b2733450a14d",
+          "MemPerc": "20.71%",
+          "MemUsage": "79.51MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-11",
+          "NetIO": "1.87GB / 3.71GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "51.1MB / 0B",
+          "CPUPerc": "0.88%",
+          "Container": "geo-tracking-test-task-processor-9",
+          "ID": "4331dd1a4b20",
+          "MemPerc": "21.51%",
+          "MemUsage": "82.59MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-9",
+          "NetIO": "1.86GB / 3.69GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "145MB / 0B",
+          "CPUPerc": "14.49%",
+          "Container": "geo-tracking-test-task-api-4",
+          "ID": "20789fd15595",
+          "MemPerc": "32.09%",
+          "MemUsage": "102.7MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-4",
+          "NetIO": "1.49GB / 1.7GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "131MB / 0B",
+          "CPUPerc": "14.60%",
+          "Container": "geo-tracking-test-task-api-1",
+          "ID": "ce531ea54198",
+          "MemPerc": "26.31%",
+          "MemUsage": "84.2MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-1",
+          "NetIO": "420MB / 450MB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "3.44%",
+          "Container": "geo-tracking-test-task-processor-10",
+          "ID": "72a2ef0c5d0c",
+          "MemPerc": "20.44%",
+          "MemUsage": "78.51MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-10",
+          "NetIO": "1.86GB / 3.68GB",
+          "PIDs": "4"
+        },
+        {
+          "BlockIO": "80.1MB / 0B",
+          "CPUPerc": "14.77%",
+          "Container": "geo-tracking-test-task-api-2",
+          "ID": "e83f6947ec92",
+          "MemPerc": "32.87%",
+          "MemUsage": "105.2MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-2",
+          "NetIO": "1.49GB / 1.7GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "40.7MB / 0B",
+          "CPUPerc": "8.17%",
+          "Container": "geo-tracking-test-task-processor-7",
+          "ID": "a8d5f297bf87",
+          "MemPerc": "21.29%",
+          "MemUsage": "81.77MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-7",
+          "NetIO": "1.87GB / 3.7GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "61.5MB / 0B",
+          "CPUPerc": "14.56%",
+          "Container": "geo-tracking-test-task-api-6",
+          "ID": "ee7704abbaf2",
+          "MemPerc": "31.58%",
+          "MemUsage": "101.1MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-6",
+          "NetIO": "1.49GB / 1.7GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "89.6MB / 0B",
+          "CPUPerc": "2.98%",
+          "Container": "geo-tracking-test-task-processor-2",
+          "ID": "3da849e48e8d",
+          "MemPerc": "21.40%",
+          "MemUsage": "82.18MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-2",
+          "NetIO": "916MB / 1.81GB",
+          "PIDs": "3"
+        },
+        {
+          "BlockIO": "46.3MB / 0B",
+          "CPUPerc": "0.82%",
+          "Container": "geo-tracking-test-task-processor-4",
+          "ID": "d808b18375fd",
+          "MemPerc": "20.90%",
+          "MemUsage": "80.25MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-4",
+          "NetIO": "1.85GB / 3.67GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "0.75%",
+          "Container": "geo-tracking-test-task-processor-6",
+          "ID": "da85321ae924",
+          "MemPerc": "20.90%",
+          "MemUsage": "80.25MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-6",
+          "NetIO": "1.86GB / 3.68GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "34.5MB / 0B",
+          "CPUPerc": "15.72%",
+          "Container": "geo-tracking-test-task-processor-8",
+          "ID": "021ac279f1ff",
+          "MemPerc": "20.88%",
+          "MemUsage": "80.19MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-8",
+          "NetIO": "1.86GB / 3.68GB",
+          "PIDs": "3"
+        },
+        {
+          "BlockIO": "1.31GB / 7.19GB",
+          "CPUPerc": "2.31%",
+          "Container": "geo-tracking-test-task-db-1",
+          "ID": "89d793296282",
+          "MemPerc": "26.59%",
+          "MemUsage": "408.4MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-db-1",
+          "NetIO": "2.47GB / 3.7GB",
+          "PIDs": "43"
+        },
+        {
+          "BlockIO": "52.4MB / 0B",
+          "CPUPerc": "0.44%",
+          "Container": "geo-tracking-test-task-gateway-2",
+          "ID": "846e871e7f41",
+          "MemPerc": "16.35%",
+          "MemUsage": "52.32MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-2",
+          "NetIO": "21.2GB / 9.39GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "68.3MB / 0B",
+          "CPUPerc": "0.31%",
+          "Container": "geo-tracking-test-task-gateway-1",
+          "ID": "6c1c94714156",
+          "MemPerc": "16.05%",
+          "MemUsage": "51.37MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-1",
+          "NetIO": "3.14GB / 1.13GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "33.3MB / 0B",
+          "CPUPerc": "0.46%",
+          "Container": "geo-tracking-test-task-edge-1",
+          "ID": "4f9f5d01d4a5",
+          "MemPerc": "8.06%",
+          "MemUsage": "20.63MiB / 256MiB",
+          "Name": "geo-tracking-test-task-edge-1",
+          "NetIO": "3.57GB / 3.19GB",
+          "PIDs": "15"
+        },
+        {
+          "BlockIO": "663MB / 0B",
+          "CPUPerc": "3.51%",
+          "Container": "geo-tracking-test-task-postgres-exporter-1",
+          "ID": "6e9b0de440f0",
+          "MemPerc": "10.13%",
+          "MemUsage": "12.97MiB / 128MiB",
+          "Name": "geo-tracking-test-task-postgres-exporter-1",
+          "NetIO": "67.1MB / 32.9MB",
+          "PIDs": "14"
+        },
+        {
+          "BlockIO": "332MB / 0B",
+          "CPUPerc": "0.37%",
+          "Container": "geo-tracking-test-task-nats-exporter-1",
+          "ID": "df5d52cdf43e",
+          "MemPerc": "24.45%",
+          "MemUsage": "15.65MiB / 64MiB",
+          "Name": "geo-tracking-test-task-nats-exporter-1",
+          "NetIO": "12.2MB / 5.25MB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "619MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-kafka-exporter-1",
+          "ID": "df26caa92764",
+          "MemPerc": "25.22%",
+          "MemUsage": "32.28MiB / 128MiB",
+          "Name": "geo-tracking-test-task-kafka-exporter-1",
+          "NetIO": "2.3GB / 1.23GB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "9.11GB / 167MB",
+          "CPUPerc": "0.16%",
+          "Container": "geo-tracking-test-task-grafana-1",
+          "ID": "e23bcdf6c613",
+          "MemPerc": "38.68%",
+          "MemUsage": "99.01MiB / 256MiB",
+          "Name": "geo-tracking-test-task-grafana-1",
+          "NetIO": "23.5MB / 156kB",
+          "PIDs": "22"
+        },
+        {
+          "BlockIO": "32.8MB / 0B",
+          "CPUPerc": "0.91%",
+          "Container": "geo-tracking-test-task-nats-1",
+          "ID": "52f0d045484f",
+          "MemPerc": "6.45%",
+          "MemUsage": "16.52MiB / 256MiB",
+          "Name": "geo-tracking-test-task-nats-1",
+          "NetIO": "788MB / 1.61GB",
+          "PIDs": "9"
+        },
+        {
+          "BlockIO": "1.6GB / 2.6GB",
+          "CPUPerc": "2.42%",
+          "Container": "geo-tracking-test-task-kafka-1",
+          "ID": "3bd667115a35",
+          "MemPerc": "47.43%",
+          "MemUsage": "728.5MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-kafka-1",
+          "NetIO": "4.23GB / 4.75GB",
+          "PIDs": "101"
+        },
+        {
+          "BlockIO": "4.36GB / 123MB",
+          "CPUPerc": "0.97%",
+          "Container": "geo-tracking-test-task-prometheus-1",
+          "ID": "86ef08f4075c",
+          "MemPerc": "22.52%",
+          "MemUsage": "173MiB / 768MiB",
+          "Name": "geo-tracking-test-task-prometheus-1",
+          "NetIO": "855MB / 18.5MB",
+          "PIDs": "12"
+        }
+      ]
+    },
+    {
+      "sampled_at": "2026-10-01T21:57:35.126606+00:00",
+      "metrics": {
+        "accepted_per_second": 777.8,
+        "committed_per_second": 2317.9669620494697,
+        "consumer_lag": 0.0,
+        "freshness_p95_seconds": 0.09787638697034494,
+        "batch_p95_seconds": 0.024246202919622466,
+        "api_loop_lag_p99_seconds": 0.004825393258426967,
+        "database_statement_seconds_per_second": 0.09410397210928927
+      },
+      "containers": [
+        {
+          "BlockIO": "46.6MB / 0B",
+          "CPUPerc": "26.44%",
+          "Container": "geo-tracking-test-task-processor-11",
+          "ID": "b2733450a14d",
+          "MemPerc": "20.64%",
+          "MemUsage": "79.25MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-11",
+          "NetIO": "1.88GB / 3.73GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "51.1MB / 0B",
+          "CPUPerc": "27.48%",
+          "Container": "geo-tracking-test-task-processor-9",
+          "ID": "4331dd1a4b20",
+          "MemPerc": "21.37%",
+          "MemUsage": "82.06MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-9",
+          "NetIO": "1.87GB / 3.7GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "145MB / 0B",
+          "CPUPerc": "32.98%",
+          "Container": "geo-tracking-test-task-api-4",
+          "ID": "20789fd15595",
+          "MemPerc": "31.98%",
+          "MemUsage": "102.3MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-4",
+          "NetIO": "1.5GB / 1.7GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "131MB / 0B",
+          "CPUPerc": "31.84%",
+          "Container": "geo-tracking-test-task-api-1",
+          "ID": "ce531ea54198",
+          "MemPerc": "26.25%",
+          "MemUsage": "84MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-1",
+          "NetIO": "428MB / 458MB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "26.09%",
+          "Container": "geo-tracking-test-task-processor-10",
+          "ID": "72a2ef0c5d0c",
+          "MemPerc": "20.36%",
+          "MemUsage": "78.19MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-10",
+          "NetIO": "1.87GB / 3.7GB",
+          "PIDs": "4"
+        },
+        {
+          "BlockIO": "80.1MB / 0B",
+          "CPUPerc": "32.33%",
+          "Container": "geo-tracking-test-task-api-2",
+          "ID": "e83f6947ec92",
+          "MemPerc": "32.61%",
+          "MemUsage": "104.3MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-2",
+          "NetIO": "1.5GB / 1.71GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "40.7MB / 0B",
+          "CPUPerc": "26.98%",
+          "Container": "geo-tracking-test-task-processor-7",
+          "ID": "a8d5f297bf87",
+          "MemPerc": "21.14%",
+          "MemUsage": "81.18MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-7",
+          "NetIO": "1.87GB / 3.71GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "61.5MB / 0B",
+          "CPUPerc": "33.85%",
+          "Container": "geo-tracking-test-task-api-6",
+          "ID": "ee7704abbaf2",
+          "MemPerc": "31.51%",
+          "MemUsage": "100.8MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-6",
+          "NetIO": "1.5GB / 1.7GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "89.6MB / 0B",
+          "CPUPerc": "27.34%",
+          "Container": "geo-tracking-test-task-processor-2",
+          "ID": "3da849e48e8d",
+          "MemPerc": "21.25%",
+          "MemUsage": "81.61MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-2",
+          "NetIO": "924MB / 1.83GB",
+          "PIDs": "3"
+        },
+        {
+          "BlockIO": "46.3MB / 0B",
+          "CPUPerc": "26.66%",
+          "Container": "geo-tracking-test-task-processor-4",
+          "ID": "d808b18375fd",
+          "MemPerc": "20.90%",
+          "MemUsage": "80.25MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-4",
+          "NetIO": "1.86GB / 3.68GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "26.34%",
+          "Container": "geo-tracking-test-task-processor-6",
+          "ID": "da85321ae924",
+          "MemPerc": "20.82%",
+          "MemUsage": "79.93MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-6",
+          "NetIO": "1.86GB / 3.69GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "34.5MB / 0B",
+          "CPUPerc": "25.87%",
+          "Container": "geo-tracking-test-task-processor-8",
+          "ID": "021ac279f1ff",
+          "MemPerc": "20.78%",
+          "MemUsage": "79.81MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-8",
+          "NetIO": "1.86GB / 3.69GB",
+          "PIDs": "3"
+        },
+        {
+          "BlockIO": "1.31GB / 7.29GB",
+          "CPUPerc": "74.31%",
+          "Container": "geo-tracking-test-task-db-1",
+          "ID": "89d793296282",
+          "MemPerc": "26.67%",
+          "MemUsage": "409.7MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-db-1",
+          "NetIO": "2.5GB / 3.73GB",
+          "PIDs": "43"
+        },
+        {
+          "BlockIO": "52.6MB / 0B",
+          "CPUPerc": "49.82%",
+          "Container": "geo-tracking-test-task-gateway-2",
+          "ID": "846e871e7f41",
+          "MemPerc": "16.34%",
+          "MemUsage": "52.29MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-2",
+          "NetIO": "21.3GB / 9.44GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "68.3MB / 0B",
+          "CPUPerc": "25.98%",
+          "Container": "geo-tracking-test-task-gateway-1",
+          "ID": "6c1c94714156",
+          "MemPerc": "15.83%",
+          "MemUsage": "50.65MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-1",
+          "NetIO": "3.17GB / 1.15GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "33.3MB / 0B",
+          "CPUPerc": "48.08%",
+          "Container": "geo-tracking-test-task-edge-1",
+          "ID": "4f9f5d01d4a5",
+          "MemPerc": "8.06%",
+          "MemUsage": "20.63MiB / 256MiB",
+          "Name": "geo-tracking-test-task-edge-1",
+          "NetIO": "3.67GB / 3.28GB",
+          "PIDs": "15"
+        },
+        {
+          "BlockIO": "663MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-postgres-exporter-1",
+          "ID": "6e9b0de440f0",
+          "MemPerc": "9.64%",
+          "MemUsage": "12.34MiB / 128MiB",
+          "Name": "geo-tracking-test-task-postgres-exporter-1",
+          "NetIO": "67.2MB / 33MB",
+          "PIDs": "14"
+        },
+        {
+          "BlockIO": "332MB / 0B",
+          "CPUPerc": "0.01%",
+          "Container": "geo-tracking-test-task-nats-exporter-1",
+          "ID": "df5d52cdf43e",
+          "MemPerc": "25.20%",
+          "MemUsage": "16.13MiB / 64MiB",
+          "Name": "geo-tracking-test-task-nats-exporter-1",
+          "NetIO": "12.2MB / 5.26MB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "619MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-kafka-exporter-1",
+          "ID": "df26caa92764",
+          "MemPerc": "25.91%",
+          "MemUsage": "33.16MiB / 128MiB",
+          "Name": "geo-tracking-test-task-kafka-exporter-1",
+          "NetIO": "2.31GB / 1.23GB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "9.11GB / 167MB",
+          "CPUPerc": "0.12%",
+          "Container": "geo-tracking-test-task-grafana-1",
+          "ID": "e23bcdf6c613",
+          "MemPerc": "38.77%",
+          "MemUsage": "99.25MiB / 256MiB",
+          "Name": "geo-tracking-test-task-grafana-1",
+          "NetIO": "23.5MB / 156kB",
+          "PIDs": "22"
+        },
+        {
+          "BlockIO": "32.8MB / 0B",
+          "CPUPerc": "8.90%",
+          "Container": "geo-tracking-test-task-nats-1",
+          "ID": "52f0d045484f",
+          "MemPerc": "6.45%",
+          "MemUsage": "16.52MiB / 256MiB",
+          "Name": "geo-tracking-test-task-nats-1",
+          "NetIO": "862MB / 1.72GB",
+          "PIDs": "9"
+        },
+        {
+          "BlockIO": "1.6GB / 2.6GB",
+          "CPUPerc": "50.42%",
+          "Container": "geo-tracking-test-task-kafka-1",
+          "ID": "3bd667115a35",
+          "MemPerc": "53.59%",
+          "MemUsage": "823.1MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-kafka-1",
+          "NetIO": "4.26GB / 4.79GB",
+          "PIDs": "101"
+        },
+        {
+          "BlockIO": "4.36GB / 123MB",
+          "CPUPerc": "0.11%",
+          "Container": "geo-tracking-test-task-prometheus-1",
+          "ID": "86ef08f4075c",
+          "MemPerc": "22.92%",
+          "MemUsage": "176MiB / 768MiB",
+          "Name": "geo-tracking-test-task-prometheus-1",
+          "NetIO": "856MB / 18.5MB",
+          "PIDs": "12"
+        }
+      ]
+    },
+    {
+      "sampled_at": "2026-10-01T21:57:47.454362+00:00",
+      "metrics": {
+        "accepted_per_second": 6080.054545454545,
+        "committed_per_second": 6863.26709075039,
+        "consumer_lag": 1078.0,
+        "freshness_p95_seconds": 0.09926338734885251,
+        "batch_p95_seconds": 0.02405011134102676,
+        "api_loop_lag_p99_seconds": 0.004803768483833229,
+        "database_statement_seconds_per_second": 0.17546932294486398
+      },
+      "containers": [
+        {
+          "BlockIO": "46.6MB / 0B",
+          "CPUPerc": "27.87%",
+          "Container": "geo-tracking-test-task-processor-11",
+          "ID": "b2733450a14d",
+          "MemPerc": "20.63%",
+          "MemUsage": "79.2MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-11",
+          "NetIO": "1.89GB / 3.74GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "51.1MB / 0B",
+          "CPUPerc": "27.95%",
+          "Container": "geo-tracking-test-task-processor-9",
+          "ID": "4331dd1a4b20",
+          "MemPerc": "20.43%",
+          "MemUsage": "78.45MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-9",
+          "NetIO": "1.88GB / 3.72GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "145MB / 0B",
+          "CPUPerc": "34.16%",
+          "Container": "geo-tracking-test-task-api-4",
+          "ID": "20789fd15595",
+          "MemPerc": "31.85%",
+          "MemUsage": "101.9MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-4",
+          "NetIO": "1.51GB / 1.71GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "131MB / 0B",
+          "CPUPerc": "33.90%",
+          "Container": "geo-tracking-test-task-api-1",
+          "ID": "ce531ea54198",
+          "MemPerc": "25.52%",
+          "MemUsage": "81.67MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-1",
+          "NetIO": "436MB / 466MB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "27.82%",
+          "Container": "geo-tracking-test-task-processor-10",
+          "ID": "72a2ef0c5d0c",
+          "MemPerc": "20.34%",
+          "MemUsage": "78.12MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-10",
+          "NetIO": "1.87GB / 3.71GB",
+          "PIDs": "4"
+        },
+        {
+          "BlockIO": "80.1MB / 0B",
+          "CPUPerc": "32.91%",
+          "Container": "geo-tracking-test-task-api-2",
+          "ID": "e83f6947ec92",
+          "MemPerc": "32.63%",
+          "MemUsage": "104.4MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-2",
+          "NetIO": "1.51GB / 1.72GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "40.7MB / 0B",
+          "CPUPerc": "28.85%",
+          "Container": "geo-tracking-test-task-processor-7",
+          "ID": "a8d5f297bf87",
+          "MemPerc": "21.16%",
+          "MemUsage": "81.24MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-7",
+          "NetIO": "1.88GB / 3.73GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "61.5MB / 0B",
+          "CPUPerc": "34.69%",
+          "Container": "geo-tracking-test-task-api-6",
+          "ID": "ee7704abbaf2",
+          "MemPerc": "31.42%",
+          "MemUsage": "100.6MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-6",
+          "NetIO": "1.51GB / 1.71GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "89.6MB / 0B",
+          "CPUPerc": "27.64%",
+          "Container": "geo-tracking-test-task-processor-2",
+          "ID": "3da849e48e8d",
+          "MemPerc": "21.26%",
+          "MemUsage": "81.65MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-2",
+          "NetIO": "931MB / 1.84GB",
+          "PIDs": "3"
+        },
+        {
+          "BlockIO": "46.3MB / 0B",
+          "CPUPerc": "27.82%",
+          "Container": "geo-tracking-test-task-processor-4",
+          "ID": "d808b18375fd",
+          "MemPerc": "20.81%",
+          "MemUsage": "79.91MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-4",
+          "NetIO": "1.87GB / 3.7GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "25.89%",
+          "Container": "geo-tracking-test-task-processor-6",
+          "ID": "da85321ae924",
+          "MemPerc": "20.72%",
+          "MemUsage": "79.57MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-6",
+          "NetIO": "1.87GB / 3.7GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "34.5MB / 0B",
+          "CPUPerc": "26.95%",
+          "Container": "geo-tracking-test-task-processor-8",
+          "ID": "021ac279f1ff",
+          "MemPerc": "20.80%",
+          "MemUsage": "79.86MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-8",
+          "NetIO": "1.87GB / 3.71GB",
+          "PIDs": "3"
+        },
+        {
+          "BlockIO": "1.31GB / 7.39GB",
+          "CPUPerc": "81.28%",
+          "Container": "geo-tracking-test-task-db-1",
+          "ID": "89d793296282",
+          "MemPerc": "26.25%",
+          "MemUsage": "403.2MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-db-1",
+          "NetIO": "2.53GB / 3.77GB",
+          "PIDs": "43"
+        },
+        {
+          "BlockIO": "52.6MB / 0B",
+          "CPUPerc": "54.63%",
+          "Container": "geo-tracking-test-task-gateway-2",
+          "ID": "846e871e7f41",
+          "MemPerc": "16.36%",
+          "MemUsage": "52.37MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-2",
+          "NetIO": "21.4GB / 9.5GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "68.3MB / 0B",
+          "CPUPerc": "27.10%",
+          "Container": "geo-tracking-test-task-gateway-1",
+          "ID": "6c1c94714156",
+          "MemPerc": "15.82%",
+          "MemUsage": "50.63MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-1",
+          "NetIO": "3.2GB / 1.17GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "35.6MB / 0B",
+          "CPUPerc": "48.39%",
+          "Container": "geo-tracking-test-task-edge-1",
+          "ID": "4f9f5d01d4a5",
+          "MemPerc": "9.11%",
+          "MemUsage": "23.33MiB / 256MiB",
+          "Name": "geo-tracking-test-task-edge-1",
+          "NetIO": "3.79GB / 3.38GB",
+          "PIDs": "15"
+        },
+        {
+          "BlockIO": "663MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-postgres-exporter-1",
+          "ID": "6e9b0de440f0",
+          "MemPerc": "10.37%",
+          "MemUsage": "13.27MiB / 128MiB",
+          "Name": "geo-tracking-test-task-postgres-exporter-1",
+          "NetIO": "67.3MB / 33MB",
+          "PIDs": "14"
+        },
+        {
+          "BlockIO": "334MB / 0B",
+          "CPUPerc": "0.47%",
+          "Container": "geo-tracking-test-task-nats-exporter-1",
+          "ID": "df5d52cdf43e",
+          "MemPerc": "23.64%",
+          "MemUsage": "15.13MiB / 64MiB",
+          "Name": "geo-tracking-test-task-nats-exporter-1",
+          "NetIO": "12.3MB / 5.27MB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "619MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-kafka-exporter-1",
+          "ID": "df26caa92764",
+          "MemPerc": "19.04%",
+          "MemUsage": "24.38MiB / 128MiB",
+          "Name": "geo-tracking-test-task-kafka-exporter-1",
+          "NetIO": "2.32GB / 1.24GB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "9.11GB / 167MB",
+          "CPUPerc": "0.16%",
+          "Container": "geo-tracking-test-task-grafana-1",
+          "ID": "e23bcdf6c613",
+          "MemPerc": "28.94%",
+          "MemUsage": "74.09MiB / 256MiB",
+          "Name": "geo-tracking-test-task-grafana-1",
+          "NetIO": "23.5MB / 156kB",
+          "PIDs": "22"
+        },
+        {
+          "BlockIO": "39MB / 0B",
+          "CPUPerc": "9.15%",
+          "Container": "geo-tracking-test-task-nats-1",
+          "ID": "52f0d045484f",
+          "MemPerc": "6.54%",
+          "MemUsage": "16.74MiB / 256MiB",
+          "Name": "geo-tracking-test-task-nats-1",
+          "NetIO": "942MB / 1.84GB",
+          "PIDs": "9"
+        },
+        {
+          "BlockIO": "1.61GB / 2.64GB",
+          "CPUPerc": "52.21%",
+          "Container": "geo-tracking-test-task-kafka-1",
+          "ID": "3bd667115a35",
+          "MemPerc": "46.80%",
+          "MemUsage": "718.8MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-kafka-1",
+          "NetIO": "4.29GB / 4.82GB",
+          "PIDs": "101"
+        },
+        {
+          "BlockIO": "4.37GB / 124MB",
+          "CPUPerc": "0.30%",
+          "Container": "geo-tracking-test-task-prometheus-1",
+          "ID": "86ef08f4075c",
+          "MemPerc": "20.27%",
+          "MemUsage": "155.7MiB / 768MiB",
+          "Name": "geo-tracking-test-task-prometheus-1",
+          "NetIO": "858MB / 18.5MB",
+          "PIDs": "12"
+        }
+      ]
+    },
+    {
+      "sampled_at": "2026-10-01T21:57:59.710665+00:00",
+      "metrics": {
+        "accepted_per_second": 9716.583746206712,
+        "committed_per_second": 11408.12421244743,
+        "consumer_lag": 1294.0,
+        "freshness_p95_seconds": 0.09930653550763298,
+        "batch_p95_seconds": 0.0240707293489213,
+        "api_loop_lag_p99_seconds": 0.004973779071969404,
+        "database_statement_seconds_per_second": 0.2610048646102798
+      },
+      "containers": [
+        {
+          "BlockIO": "46.6MB / 0B",
+          "CPUPerc": "25.64%",
+          "Container": "geo-tracking-test-task-processor-11",
+          "ID": "b2733450a14d",
+          "MemPerc": "20.63%",
+          "MemUsage": "79.21MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-11",
+          "NetIO": "1.9GB / 3.76GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "54.2MB / 0B",
+          "CPUPerc": "26.08%",
+          "Container": "geo-tracking-test-task-processor-9",
+          "ID": "4331dd1a4b20",
+          "MemPerc": "21.23%",
+          "MemUsage": "81.51MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-9",
+          "NetIO": "1.89GB / 3.73GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "145MB / 0B",
+          "CPUPerc": "50.86%",
+          "Container": "geo-tracking-test-task-api-4",
+          "ID": "20789fd15595",
+          "MemPerc": "32.03%",
+          "MemUsage": "102.5MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-4",
+          "NetIO": "1.51GB / 1.72GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "131MB / 0B",
+          "CPUPerc": "32.61%",
+          "Container": "geo-tracking-test-task-api-1",
+          "ID": "ce531ea54198",
+          "MemPerc": "25.87%",
+          "MemUsage": "82.79MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-1",
+          "NetIO": "444MB / 475MB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "25.99%",
+          "Container": "geo-tracking-test-task-processor-10",
+          "ID": "72a2ef0c5d0c",
+          "MemPerc": "20.35%",
+          "MemUsage": "78.16MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-10",
+          "NetIO": "1.88GB / 3.72GB",
+          "PIDs": "4"
+        },
+        {
+          "BlockIO": "82.3MB / 0B",
+          "CPUPerc": "33.71%",
+          "Container": "geo-tracking-test-task-api-2",
+          "ID": "e83f6947ec92",
+          "MemPerc": "33.42%",
+          "MemUsage": "106.9MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-2",
+          "NetIO": "1.51GB / 1.73GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "40.7MB / 0B",
+          "CPUPerc": "25.69%",
+          "Container": "geo-tracking-test-task-processor-7",
+          "ID": "a8d5f297bf87",
+          "MemPerc": "21.21%",
+          "MemUsage": "81.44MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-7",
+          "NetIO": "1.89GB / 3.74GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "61.5MB / 0B",
+          "CPUPerc": "37.59%",
+          "Container": "geo-tracking-test-task-api-6",
+          "ID": "ee7704abbaf2",
+          "MemPerc": "31.49%",
+          "MemUsage": "100.8MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-6",
+          "NetIO": "1.51GB / 1.72GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "89.6MB / 0B",
+          "CPUPerc": "26.11%",
+          "Container": "geo-tracking-test-task-processor-2",
+          "ID": "3da849e48e8d",
+          "MemPerc": "21.26%",
+          "MemUsage": "81.65MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-2",
+          "NetIO": "939MB / 1.86GB",
+          "PIDs": "3"
+        },
+        {
+          "BlockIO": "46.3MB / 0B",
+          "CPUPerc": "26.59%",
+          "Container": "geo-tracking-test-task-processor-4",
+          "ID": "d808b18375fd",
+          "MemPerc": "20.82%",
+          "MemUsage": "79.95MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-4",
+          "NetIO": "1.88GB / 3.71GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "26.56%",
+          "Container": "geo-tracking-test-task-processor-6",
+          "ID": "da85321ae924",
+          "MemPerc": "20.74%",
+          "MemUsage": "79.62MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-6",
+          "NetIO": "1.88GB / 3.72GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "34.5MB / 0B",
+          "CPUPerc": "27.42%",
+          "Container": "geo-tracking-test-task-processor-8",
+          "ID": "021ac279f1ff",
+          "MemPerc": "20.80%",
+          "MemUsage": "79.88MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-8",
+          "NetIO": "1.88GB / 3.72GB",
+          "PIDs": "3"
+        },
+        {
+          "BlockIO": "1.31GB / 7.5GB",
+          "CPUPerc": "81.27%",
+          "Container": "geo-tracking-test-task-db-1",
+          "ID": "89d793296282",
+          "MemPerc": "26.27%",
+          "MemUsage": "403.6MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-db-1",
+          "NetIO": "2.56GB / 3.8GB",
+          "PIDs": "43"
+        },
+        {
+          "BlockIO": "52.6MB / 0B",
+          "CPUPerc": "58.16%",
+          "Container": "geo-tracking-test-task-gateway-2",
+          "ID": "846e871e7f41",
+          "MemPerc": "16.44%",
+          "MemUsage": "52.59MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-2",
+          "NetIO": "21.5GB / 9.55GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "68.3MB / 0B",
+          "CPUPerc": "25.73%",
+          "Container": "geo-tracking-test-task-gateway-1",
+          "ID": "6c1c94714156",
+          "MemPerc": "15.82%",
+          "MemUsage": "50.63MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-1",
+          "NetIO": "3.23GB / 1.18GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "35.6MB / 0B",
+          "CPUPerc": "47.50%",
+          "Container": "geo-tracking-test-task-edge-1",
+          "ID": "4f9f5d01d4a5",
+          "MemPerc": "8.99%",
+          "MemUsage": "23.02MiB / 256MiB",
+          "Name": "geo-tracking-test-task-edge-1",
+          "NetIO": "3.9GB / 3.48GB",
+          "PIDs": "15"
+        },
+        {
+          "BlockIO": "672MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-postgres-exporter-1",
+          "ID": "6e9b0de440f0",
+          "MemPerc": "15.65%",
+          "MemUsage": "20.04MiB / 128MiB",
+          "Name": "geo-tracking-test-task-postgres-exporter-1",
+          "NetIO": "67.5MB / 33.1MB",
+          "PIDs": "14"
+        },
+        {
+          "BlockIO": "334MB / 0B",
+          "CPUPerc": "0.05%",
+          "Container": "geo-tracking-test-task-nats-exporter-1",
+          "ID": "df5d52cdf43e",
+          "MemPerc": "22.99%",
+          "MemUsage": "14.71MiB / 64MiB",
+          "Name": "geo-tracking-test-task-nats-exporter-1",
+          "NetIO": "12.3MB / 5.28MB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "620MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-kafka-exporter-1",
+          "ID": "df26caa92764",
+          "MemPerc": "19.17%",
+          "MemUsage": "24.54MiB / 128MiB",
+          "Name": "geo-tracking-test-task-kafka-exporter-1",
+          "NetIO": "2.33GB / 1.24GB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "9.12GB / 167MB",
+          "CPUPerc": "0.14%",
+          "Container": "geo-tracking-test-task-grafana-1",
+          "ID": "e23bcdf6c613",
+          "MemPerc": "30.47%",
+          "MemUsage": "78.01MiB / 256MiB",
+          "Name": "geo-tracking-test-task-grafana-1",
+          "NetIO": "23.5MB / 156kB",
+          "PIDs": "22"
+        },
+        {
+          "BlockIO": "39MB / 0B",
+          "CPUPerc": "8.55%",
+          "Container": "geo-tracking-test-task-nats-1",
+          "ID": "52f0d045484f",
+          "MemPerc": "6.30%",
+          "MemUsage": "16.12MiB / 256MiB",
+          "Name": "geo-tracking-test-task-nats-1",
+          "NetIO": "1.02GB / 1.95GB",
+          "PIDs": "9"
+        },
+        {
+          "BlockIO": "1.63GB / 2.64GB",
+          "CPUPerc": "51.09%",
+          "Container": "geo-tracking-test-task-kafka-1",
+          "ID": "3bd667115a35",
+          "MemPerc": "49.96%",
+          "MemUsage": "767.4MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-kafka-1",
+          "NetIO": "4.33GB / 4.86GB",
+          "PIDs": "101"
+        },
+        {
+          "BlockIO": "4.38GB / 124MB",
+          "CPUPerc": "0.19%",
+          "Container": "geo-tracking-test-task-prometheus-1",
+          "ID": "86ef08f4075c",
+          "MemPerc": "21.39%",
+          "MemUsage": "164.3MiB / 768MiB",
+          "Name": "geo-tracking-test-task-prometheus-1",
+          "NetIO": "860MB / 18.6MB",
+          "PIDs": "12"
+        }
+      ]
+    },
+    {
+      "sampled_at": "2026-10-01T21:58:12.156486+00:00",
+      "metrics": {
+        "accepted_per_second": 15170.205099225992,
+        "committed_per_second": 15953.618181818181,
+        "consumer_lag": 2578.0,
+        "freshness_p95_seconds": 0.10442005076142107,
+        "batch_p95_seconds": 0.02427508620689655,
+        "api_loop_lag_p99_seconds": 0.007219964796563452,
+        "database_statement_seconds_per_second": 0.39684439438140506
+      },
+      "containers": [
+        {
+          "BlockIO": "46.6MB / 0B",
+          "CPUPerc": "27.24%",
+          "Container": "geo-tracking-test-task-processor-11",
+          "ID": "b2733450a14d",
+          "MemPerc": "20.63%",
+          "MemUsage": "79.21MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-11",
+          "NetIO": "1.9GB / 3.77GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "54.2MB / 0B",
+          "CPUPerc": "28.87%",
+          "Container": "geo-tracking-test-task-processor-9",
+          "ID": "4331dd1a4b20",
+          "MemPerc": "21.23%",
+          "MemUsage": "81.52MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-9",
+          "NetIO": "1.89GB / 3.75GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "145MB / 0B",
+          "CPUPerc": "35.76%",
+          "Container": "geo-tracking-test-task-api-4",
+          "ID": "20789fd15595",
+          "MemPerc": "31.90%",
+          "MemUsage": "102.1MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-4",
+          "NetIO": "1.52GB / 1.73GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "131MB / 0B",
+          "CPUPerc": "33.28%",
+          "Container": "geo-tracking-test-task-api-1",
+          "ID": "ce531ea54198",
+          "MemPerc": "25.52%",
+          "MemUsage": "81.67MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-1",
+          "NetIO": "452MB / 483MB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "26.81%",
+          "Container": "geo-tracking-test-task-processor-10",
+          "ID": "72a2ef0c5d0c",
+          "MemPerc": "20.35%",
+          "MemUsage": "78.13MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-10",
+          "NetIO": "1.89GB / 3.74GB",
+          "PIDs": "4"
+        },
+        {
+          "BlockIO": "82.3MB / 0B",
+          "CPUPerc": "34.90%",
+          "Container": "geo-tracking-test-task-api-2",
+          "ID": "e83f6947ec92",
+          "MemPerc": "33.35%",
+          "MemUsage": "106.7MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-2",
+          "NetIO": "1.52GB / 1.74GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "40.7MB / 0B",
+          "CPUPerc": "26.35%",
+          "Container": "geo-tracking-test-task-processor-7",
+          "ID": "a8d5f297bf87",
+          "MemPerc": "21.21%",
+          "MemUsage": "81.45MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-7",
+          "NetIO": "1.9GB / 3.75GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "61.5MB / 0B",
+          "CPUPerc": "35.22%",
+          "Container": "geo-tracking-test-task-api-6",
+          "ID": "ee7704abbaf2",
+          "MemPerc": "31.54%",
+          "MemUsage": "100.9MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-6",
+          "NetIO": "1.52GB / 1.73GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "89.6MB / 0B",
+          "CPUPerc": "26.94%",
+          "Container": "geo-tracking-test-task-processor-2",
+          "ID": "3da849e48e8d",
+          "MemPerc": "21.27%",
+          "MemUsage": "81.68MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-2",
+          "NetIO": "947MB / 1.87GB",
+          "PIDs": "3"
+        },
+        {
+          "BlockIO": "46.3MB / 0B",
+          "CPUPerc": "27.80%",
+          "Container": "geo-tracking-test-task-processor-4",
+          "ID": "d808b18375fd",
+          "MemPerc": "20.82%",
+          "MemUsage": "79.95MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-4",
+          "NetIO": "1.89GB / 3.72GB",
+          "PIDs": "5"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "27.24%",
+          "Container": "geo-tracking-test-task-processor-6",
+          "ID": "da85321ae924",
+          "MemPerc": "20.73%",
+          "MemUsage": "79.6MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-6",
+          "NetIO": "1.89GB / 3.73GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "34.5MB / 0B",
+          "CPUPerc": "26.83%",
+          "Container": "geo-tracking-test-task-processor-8",
+          "ID": "021ac279f1ff",
+          "MemPerc": "20.80%",
+          "MemUsage": "79.87MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-8",
+          "NetIO": "1.89GB / 3.73GB",
+          "PIDs": "3"
+        },
+        {
+          "BlockIO": "1.31GB / 7.6GB",
+          "CPUPerc": "87.76%",
+          "Container": "geo-tracking-test-task-db-1",
+          "ID": "89d793296282",
+          "MemPerc": "26.24%",
+          "MemUsage": "403.1MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-db-1",
+          "NetIO": "2.59GB / 3.84GB",
+          "PIDs": "43"
+        },
+        {
+          "BlockIO": "52.6MB / 0B",
+          "CPUPerc": "51.71%",
+          "Container": "geo-tracking-test-task-gateway-2",
+          "ID": "846e871e7f41",
+          "MemPerc": "16.32%",
+          "MemUsage": "52.21MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-2",
+          "NetIO": "21.6GB / 9.61GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "68.3MB / 0B",
+          "CPUPerc": "25.62%",
+          "Container": "geo-tracking-test-task-gateway-1",
+          "ID": "6c1c94714156",
+          "MemPerc": "15.93%",
+          "MemUsage": "50.99MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-1",
+          "NetIO": "3.27GB / 1.2GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "35.6MB / 0B",
+          "CPUPerc": "50.10%",
+          "Container": "geo-tracking-test-task-edge-1",
+          "ID": "4f9f5d01d4a5",
+          "MemPerc": "8.99%",
+          "MemUsage": "23.02MiB / 256MiB",
+          "Name": "geo-tracking-test-task-edge-1",
+          "NetIO": "4.01GB / 3.58GB",
+          "PIDs": "15"
+        },
+        {
+          "BlockIO": "672MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-postgres-exporter-1",
+          "ID": "6e9b0de440f0",
+          "MemPerc": "16.54%",
+          "MemUsage": "21.17MiB / 128MiB",
+          "Name": "geo-tracking-test-task-postgres-exporter-1",
+          "NetIO": "67.6MB / 33.2MB",
+          "PIDs": "14"
+        },
+        {
+          "BlockIO": "334MB / 0B",
+          "CPUPerc": "0.46%",
+          "Container": "geo-tracking-test-task-nats-exporter-1",
+          "ID": "df5d52cdf43e",
+          "MemPerc": "24.96%",
+          "MemUsage": "15.98MiB / 64MiB",
+          "Name": "geo-tracking-test-task-nats-exporter-1",
+          "NetIO": "12.3MB / 5.29MB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "620MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-kafka-exporter-1",
+          "ID": "df26caa92764",
+          "MemPerc": "19.59%",
+          "MemUsage": "25.08MiB / 128MiB",
+          "Name": "geo-tracking-test-task-kafka-exporter-1",
+          "NetIO": "2.33GB / 1.24GB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "9.24GB / 168MB",
+          "CPUPerc": "0.48%",
+          "Container": "geo-tracking-test-task-grafana-1",
+          "ID": "e23bcdf6c613",
+          "MemPerc": "76.77%",
+          "MemUsage": "196.5MiB / 256MiB",
+          "Name": "geo-tracking-test-task-grafana-1",
+          "NetIO": "23.5MB / 159kB",
+          "PIDs": "22"
+        },
+        {
+          "BlockIO": "39MB / 0B",
+          "CPUPerc": "7.86%",
+          "Container": "geo-tracking-test-task-nats-1",
+          "ID": "52f0d045484f",
+          "MemPerc": "6.71%",
+          "MemUsage": "17.19MiB / 256MiB",
+          "Name": "geo-tracking-test-task-nats-1",
+          "NetIO": "1.1GB / 2.07GB",
+          "PIDs": "9"
+        },
+        {
+          "BlockIO": "1.63GB / 2.64GB",
+          "CPUPerc": "54.20%",
+          "Container": "geo-tracking-test-task-kafka-1",
+          "ID": "3bd667115a35",
+          "MemPerc": "49.95%",
+          "MemUsage": "767.3MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-kafka-1",
+          "NetIO": "4.36GB / 4.9GB",
+          "PIDs": "101"
+        },
+        {
+          "BlockIO": "4.38GB / 124MB",
+          "CPUPerc": "1.46%",
+          "Container": "geo-tracking-test-task-prometheus-1",
+          "ID": "86ef08f4075c",
+          "MemPerc": "21.45%",
+          "MemUsage": "164.7MiB / 768MiB",
+          "Name": "geo-tracking-test-task-prometheus-1",
+          "NetIO": "862MB / 18.6MB",
+          "PIDs": "12"
+        }
+      ]
+    },
+    {
+      "sampled_at": "2026-10-01T21:58:24.585221+00:00",
+      "metrics": {
+        "accepted_per_second": 18806.893401082354,
+        "committed_per_second": 19883.73413954212,
+        "consumer_lag": 1020.0,
+        "freshness_p95_seconds": 0.09977159388791597,
+        "batch_p95_seconds": 0.024272906871619072,
+        "api_loop_lag_p99_seconds": 0.009200000000000036,
+        "database_statement_seconds_per_second": 0.48307616493585026
+      },
+      "containers": [
+        {
+          "BlockIO": "46.6MB / 0B",
+          "CPUPerc": "19.09%",
+          "Container": "geo-tracking-test-task-processor-11",
+          "ID": "b2733450a14d",
+          "MemPerc": "20.76%",
+          "MemUsage": "79.73MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-11",
+          "NetIO": "1.91GB / 3.78GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "54.3MB / 0B",
+          "CPUPerc": "55.06%",
+          "Container": "geo-tracking-test-task-processor-9",
+          "ID": "4331dd1a4b20",
+          "MemPerc": "21.59%",
+          "MemUsage": "82.9MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-9",
+          "NetIO": "1.9GB / 3.76GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "145MB / 0B",
+          "CPUPerc": "2.53%",
+          "Container": "geo-tracking-test-task-api-4",
+          "ID": "20789fd15595",
+          "MemPerc": "31.81%",
+          "MemUsage": "101.8MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-4",
+          "NetIO": "1.53GB / 1.74GB",
+          "PIDs": "13"
+        },
+        {
+          "BlockIO": "134MB / 0B",
+          "CPUPerc": "2.84%",
+          "Container": "geo-tracking-test-task-api-1",
+          "ID": "ce531ea54198",
+          "MemPerc": "28.26%",
+          "MemUsage": "90.44MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-1",
+          "NetIO": "459MB / 490MB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "59.55%",
+          "Container": "geo-tracking-test-task-processor-10",
+          "ID": "72a2ef0c5d0c",
+          "MemPerc": "24.30%",
+          "MemUsage": "93.33MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-10",
+          "NetIO": "1.89GB / 3.75GB",
+          "PIDs": "21"
+        },
+        {
+          "BlockIO": "83.9MB / 0B",
+          "CPUPerc": "2.79%",
+          "Container": "geo-tracking-test-task-api-2",
+          "ID": "e83f6947ec92",
+          "MemPerc": "33.71%",
+          "MemUsage": "107.9MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-2",
+          "NetIO": "1.53GB / 1.74GB",
+          "PIDs": "13"
+        },
+        {
+          "BlockIO": "40.7MB / 0B",
+          "CPUPerc": "58.46%",
+          "Container": "geo-tracking-test-task-processor-7",
+          "ID": "a8d5f297bf87",
+          "MemPerc": "21.65%",
+          "MemUsage": "83.15MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-7",
+          "NetIO": "1.9GB / 3.76GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "65.7MB / 0B",
+          "CPUPerc": "2.65%",
+          "Container": "geo-tracking-test-task-api-6",
+          "ID": "ee7704abbaf2",
+          "MemPerc": "32.62%",
+          "MemUsage": "104.4MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-6",
+          "NetIO": "1.53GB / 1.74GB",
+          "PIDs": "13"
+        },
+        {
+          "BlockIO": "89.6MB / 0B",
+          "CPUPerc": "60.75%",
+          "Container": "geo-tracking-test-task-processor-2",
+          "ID": "3da849e48e8d",
+          "MemPerc": "21.76%",
+          "MemUsage": "83.55MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-2",
+          "NetIO": "953MB / 1.88GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "46.3MB / 0B",
+          "CPUPerc": "57.08%",
+          "Container": "geo-tracking-test-task-processor-4",
+          "ID": "d808b18375fd",
+          "MemPerc": "21.24%",
+          "MemUsage": "81.57MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-4",
+          "NetIO": "1.89GB / 3.73GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "57.47%",
+          "Container": "geo-tracking-test-task-processor-6",
+          "ID": "da85321ae924",
+          "MemPerc": "21.02%",
+          "MemUsage": "80.73MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-6",
+          "NetIO": "1.89GB / 3.74GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "34.5MB / 0B",
+          "CPUPerc": "57.51%",
+          "Container": "geo-tracking-test-task-processor-8",
+          "ID": "021ac279f1ff",
+          "MemPerc": "21.23%",
+          "MemUsage": "81.53MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-8",
+          "NetIO": "1.89GB / 3.74GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "1.35GB / 7.66GB",
+          "CPUPerc": "3.11%",
+          "Container": "geo-tracking-test-task-db-1",
+          "ID": "89d793296282",
+          "MemPerc": "28.18%",
+          "MemUsage": "432.8MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-db-1",
+          "NetIO": "2.61GB / 3.86GB",
+          "PIDs": "43"
+        },
+        {
+          "BlockIO": "52.6MB / 0B",
+          "CPUPerc": "0.11%",
+          "Container": "geo-tracking-test-task-gateway-2",
+          "ID": "846e871e7f41",
+          "MemPerc": "16.22%",
+          "MemUsage": "51.91MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-2",
+          "NetIO": "21.6GB / 9.65GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "68.3MB / 0B",
+          "CPUPerc": "14.85%",
+          "Container": "geo-tracking-test-task-gateway-1",
+          "ID": "6c1c94714156",
+          "MemPerc": "15.92%",
+          "MemUsage": "50.94MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-1",
+          "NetIO": "3.29GB / 1.21GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "35.6MB / 0B",
+          "CPUPerc": "37.03%",
+          "Container": "geo-tracking-test-task-edge-1",
+          "ID": "4f9f5d01d4a5",
+          "MemPerc": "8.99%",
+          "MemUsage": "23.02MiB / 256MiB",
+          "Name": "geo-tracking-test-task-edge-1",
+          "NetIO": "4.1GB / 3.66GB",
+          "PIDs": "15"
+        },
+        {
+          "BlockIO": "672MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-postgres-exporter-1",
+          "ID": "6e9b0de440f0",
+          "MemPerc": "16.61%",
+          "MemUsage": "21.26MiB / 128MiB",
+          "Name": "geo-tracking-test-task-postgres-exporter-1",
+          "NetIO": "67.8MB / 33.2MB",
+          "PIDs": "14"
+        },
+        {
+          "BlockIO": "334MB / 0B",
+          "CPUPerc": "0.02%",
+          "Container": "geo-tracking-test-task-nats-exporter-1",
+          "ID": "df5d52cdf43e",
+          "MemPerc": "26.25%",
+          "MemUsage": "16.8MiB / 64MiB",
+          "Name": "geo-tracking-test-task-nats-exporter-1",
+          "NetIO": "12.3MB / 5.3MB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "623MB / 0B",
+          "CPUPerc": "0.86%",
+          "Container": "geo-tracking-test-task-kafka-exporter-1",
+          "ID": "df26caa92764",
+          "MemPerc": "22.53%",
+          "MemUsage": "28.84MiB / 128MiB",
+          "Name": "geo-tracking-test-task-kafka-exporter-1",
+          "NetIO": "2.34GB / 1.25GB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "9.25GB / 168MB",
+          "CPUPerc": "0.12%",
+          "Container": "geo-tracking-test-task-grafana-1",
+          "ID": "e23bcdf6c613",
+          "MemPerc": "79.67%",
+          "MemUsage": "203.9MiB / 256MiB",
+          "Name": "geo-tracking-test-task-grafana-1",
+          "NetIO": "23.5MB / 159kB",
+          "PIDs": "22"
+        },
+        {
+          "BlockIO": "39MB / 0B",
+          "CPUPerc": "0.03%",
+          "Container": "geo-tracking-test-task-nats-1",
+          "ID": "52f0d045484f",
+          "MemPerc": "6.24%",
+          "MemUsage": "15.96MiB / 256MiB",
+          "Name": "geo-tracking-test-task-nats-1",
+          "NetIO": "1.16GB / 2.15GB",
+          "PIDs": "9"
+        },
+        {
+          "BlockIO": "62.2MB / 73.7kB",
+          "CPUPerc": "79.17%",
+          "Container": "geo-tracking-test-task-kafka-1",
+          "ID": "3bd667115a35",
+          "MemPerc": "8.87%",
+          "MemUsage": "136.2MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-kafka-1",
+          "NetIO": "599kB / 437kB",
+          "PIDs": "14"
+        },
+        {
+          "BlockIO": "4.38GB / 124MB",
+          "CPUPerc": "1.08%",
+          "Container": "geo-tracking-test-task-prometheus-1",
+          "ID": "86ef08f4075c",
+          "MemPerc": "21.42%",
+          "MemUsage": "164.5MiB / 768MiB",
+          "Name": "geo-tracking-test-task-prometheus-1",
+          "NetIO": "864MB / 18.6MB",
+          "PIDs": "12"
+        }
+      ]
+    },
+    {
+      "sampled_at": "2026-10-01T21:58:36.832156+00:00",
+      "metrics": {
+        "accepted_per_second": 16545.654545454545,
+        "committed_per_second": 15966.10909090909,
+        "consumer_lag": null,
+        "freshness_p95_seconds": 0.11465379637618603,
+        "batch_p95_seconds": 0.02432415417147251,
+        "api_loop_lag_p99_seconds": 0.02166249999999998,
+        "database_statement_seconds_per_second": 0.376232773835834
+      },
+      "containers": [
+        {
+          "BlockIO": "49MB / 0B",
+          "CPUPerc": "6.42%",
+          "Container": "geo-tracking-test-task-processor-11",
+          "ID": "b2733450a14d",
+          "MemPerc": "21.43%",
+          "MemUsage": "82.28MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-11",
+          "NetIO": "1.91GB / 3.78GB",
+          "PIDs": "7"
+        },
+        {
+          "BlockIO": "56MB / 0B",
+          "CPUPerc": "11.69%",
+          "Container": "geo-tracking-test-task-processor-9",
+          "ID": "4331dd1a4b20",
+          "MemPerc": "21.51%",
+          "MemUsage": "82.59MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-9",
+          "NetIO": "1.9GB / 3.76GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "146MB / 0B",
+          "CPUPerc": "86.61%",
+          "Container": "geo-tracking-test-task-api-4",
+          "ID": "20789fd15595",
+          "MemPerc": "33.21%",
+          "MemUsage": "106.3MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-4",
+          "NetIO": "1.54GB / 1.76GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "134MB / 0B",
+          "CPUPerc": "86.61%",
+          "Container": "geo-tracking-test-task-api-1",
+          "ID": "ce531ea54198",
+          "MemPerc": "32.24%",
+          "MemUsage": "103.2MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-1",
+          "NetIO": "468MB / 515MB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "4.42%",
+          "Container": "geo-tracking-test-task-processor-10",
+          "ID": "72a2ef0c5d0c",
+          "MemPerc": "20.95%",
+          "MemUsage": "80.43MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-10",
+          "NetIO": "1.9GB / 3.75GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "84MB / 0B",
+          "CPUPerc": "91.32%",
+          "Container": "geo-tracking-test-task-api-2",
+          "ID": "e83f6947ec92",
+          "MemPerc": "33.58%",
+          "MemUsage": "107.5MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-2",
+          "NetIO": "1.54GB / 1.77GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "40.7MB / 0B",
+          "CPUPerc": "5.20%",
+          "Container": "geo-tracking-test-task-processor-7",
+          "ID": "a8d5f297bf87",
+          "MemPerc": "21.95%",
+          "MemUsage": "84.28MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-7",
+          "NetIO": "1.9GB / 3.77GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "65.7MB / 0B",
+          "CPUPerc": "91.04%",
+          "Container": "geo-tracking-test-task-api-6",
+          "ID": "ee7704abbaf2",
+          "MemPerc": "32.20%",
+          "MemUsage": "103MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-6",
+          "NetIO": "1.54GB / 1.76GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "89.6MB / 0B",
+          "CPUPerc": "4.89%",
+          "Container": "geo-tracking-test-task-processor-2",
+          "ID": "3da849e48e8d",
+          "MemPerc": "22.06%",
+          "MemUsage": "84.7MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-2",
+          "NetIO": "954MB / 1.88GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "46.3MB / 0B",
+          "CPUPerc": "5.13%",
+          "Container": "geo-tracking-test-task-processor-4",
+          "ID": "d808b18375fd",
+          "MemPerc": "21.54%",
+          "MemUsage": "82.7MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-4",
+          "NetIO": "1.89GB / 3.74GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "35.3MB / 0B",
+          "CPUPerc": "4.84%",
+          "Container": "geo-tracking-test-task-processor-6",
+          "ID": "da85321ae924",
+          "MemPerc": "21.28%",
+          "MemUsage": "81.71MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-6",
+          "NetIO": "1.89GB / 3.74GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "34.5MB / 0B",
+          "CPUPerc": "4.68%",
+          "Container": "geo-tracking-test-task-processor-8",
+          "ID": "021ac279f1ff",
+          "MemPerc": "21.42%",
+          "MemUsage": "82.27MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-8",
+          "NetIO": "1.89GB / 3.75GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "1.36GB / 7.66GB",
+          "CPUPerc": "29.66%",
+          "Container": "geo-tracking-test-task-db-1",
+          "ID": "89d793296282",
+          "MemPerc": "27.11%",
+          "MemUsage": "416.4MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-db-1",
+          "NetIO": "2.61GB / 3.86GB",
+          "PIDs": "43"
+        },
+        {
+          "BlockIO": "52.6MB / 0B",
+          "CPUPerc": "1.51%",
+          "Container": "geo-tracking-test-task-gateway-2",
+          "ID": "846e871e7f41",
+          "MemPerc": "16.42%",
+          "MemUsage": "52.54MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-2",
+          "NetIO": "21.6GB / 9.65GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "68.3MB / 0B",
+          "CPUPerc": "1.47%",
+          "Container": "geo-tracking-test-task-gateway-1",
+          "ID": "6c1c94714156",
+          "MemPerc": "15.90%",
+          "MemUsage": "50.88MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-1",
+          "NetIO": "3.29GB / 1.21GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "36MB / 0B",
+          "CPUPerc": "46.36%",
+          "Container": "geo-tracking-test-task-edge-1",
+          "ID": "4f9f5d01d4a5",
+          "MemPerc": "8.03%",
+          "MemUsage": "20.55MiB / 256MiB",
+          "Name": "geo-tracking-test-task-edge-1",
+          "NetIO": "4.13GB / 3.7GB",
+          "PIDs": "15"
+        },
+        {
+          "BlockIO": "672MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-postgres-exporter-1",
+          "ID": "6e9b0de440f0",
+          "MemPerc": "7.43%",
+          "MemUsage": "9.512MiB / 128MiB",
+          "Name": "geo-tracking-test-task-postgres-exporter-1",
+          "NetIO": "67.9MB / 33.3MB",
+          "PIDs": "14"
+        },
+        {
+          "BlockIO": "334MB / 0B",
+          "CPUPerc": "1.40%",
+          "Container": "geo-tracking-test-task-nats-exporter-1",
+          "ID": "df5d52cdf43e",
+          "MemPerc": "21.71%",
+          "MemUsage": "13.89MiB / 64MiB",
+          "Name": "geo-tracking-test-task-nats-exporter-1",
+          "NetIO": "12.4MB / 5.31MB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "630MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-kafka-exporter-1",
+          "ID": "df26caa92764",
+          "MemPerc": "22.92%",
+          "MemUsage": "29.34MiB / 128MiB",
+          "Name": "geo-tracking-test-task-kafka-exporter-1",
+          "NetIO": "2.34GB / 1.25GB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "9.26GB / 168MB",
+          "CPUPerc": "0.28%",
+          "Container": "geo-tracking-test-task-grafana-1",
+          "ID": "e23bcdf6c613",
+          "MemPerc": "33.29%",
+          "MemUsage": "85.21MiB / 256MiB",
+          "Name": "geo-tracking-test-task-grafana-1",
+          "NetIO": "23.5MB / 159kB",
+          "PIDs": "22"
+        },
+        {
+          "BlockIO": "44.5MB / 0B",
+          "CPUPerc": "0.59%",
+          "Container": "geo-tracking-test-task-nats-1",
+          "ID": "52f0d045484f",
+          "MemPerc": "5.85%",
+          "MemUsage": "14.99MiB / 256MiB",
+          "Name": "geo-tracking-test-task-nats-1",
+          "NetIO": "1.16GB / 2.15GB",
+          "PIDs": "9"
+        },
+        {
+          "BlockIO": "116MB / 23.7MB",
+          "CPUPerc": "174.05%",
+          "Container": "geo-tracking-test-task-kafka-1",
+          "ID": "3bd667115a35",
+          "MemPerc": "44.19%",
+          "MemUsage": "678.7MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-kafka-1",
+          "NetIO": "100MB / 11.8MB",
+          "PIDs": "100"
+        },
+        {
+          "BlockIO": "4.43GB / 124MB",
+          "CPUPerc": "0.46%",
+          "Container": "geo-tracking-test-task-prometheus-1",
+          "ID": "86ef08f4075c",
+          "MemPerc": "22.87%",
+          "MemUsage": "175.6MiB / 768MiB",
+          "Name": "geo-tracking-test-task-prometheus-1",
+          "NetIO": "865MB / 18.7MB",
+          "PIDs": "12"
+        }
+      ]
+    },
+    {
+      "sampled_at": "2026-10-01T21:58:49.334461+00:00",
+      "metrics": {
+        "accepted_per_second": 20041.817457242778,
+        "committed_per_second": 19966.63636363636,
+        "consumer_lag": 212316.0,
+        "freshness_p95_seconds": 0.15548917213421323,
+        "batch_p95_seconds": 0.030361778066190726,
+        "api_loop_lag_p99_seconds": 0.07395454545454537,
+        "database_statement_seconds_per_second": 0.8753972728181276
+      },
+      "containers": [
+        {
+          "BlockIO": "49MB / 0B",
+          "CPUPerc": "20.41%",
+          "Container": "geo-tracking-test-task-processor-11",
+          "ID": "b2733450a14d",
+          "MemPerc": "22.54%",
+          "MemUsage": "86.56MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-11",
+          "NetIO": "1.92GB / 3.81GB",
+          "PIDs": "7"
+        },
+        {
+          "BlockIO": "56MB / 0B",
+          "CPUPerc": "21.23%",
+          "Container": "geo-tracking-test-task-processor-9",
+          "ID": "4331dd1a4b20",
+          "MemPerc": "22.72%",
+          "MemUsage": "87.23MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-9",
+          "NetIO": "1.91GB / 3.79GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "146MB / 0B",
+          "CPUPerc": "32.71%",
+          "Container": "geo-tracking-test-task-api-4",
+          "ID": "20789fd15595",
+          "MemPerc": "32.43%",
+          "MemUsage": "103.8MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-4",
+          "NetIO": "1.55GB / 1.77GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "134MB / 0B",
+          "CPUPerc": "32.18%",
+          "Container": "geo-tracking-test-task-api-1",
+          "ID": "ce531ea54198",
+          "MemPerc": "31.99%",
+          "MemUsage": "102.4MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-1",
+          "NetIO": "475MB / 523MB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "21.09%",
+          "Container": "geo-tracking-test-task-processor-10",
+          "ID": "72a2ef0c5d0c",
+          "MemPerc": "21.56%",
+          "MemUsage": "82.8MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-10",
+          "NetIO": "1.91GB / 3.78GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "84MB / 0B",
+          "CPUPerc": "32.60%",
+          "Container": "geo-tracking-test-task-api-2",
+          "ID": "e83f6947ec92",
+          "MemPerc": "33.47%",
+          "MemUsage": "107.1MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-2",
+          "NetIO": "1.55GB / 1.78GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "40.7MB / 0B",
+          "CPUPerc": "21.18%",
+          "Container": "geo-tracking-test-task-processor-7",
+          "ID": "a8d5f297bf87",
+          "MemPerc": "22.98%",
+          "MemUsage": "88.25MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-7",
+          "NetIO": "1.92GB / 3.79GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "65.7MB / 0B",
+          "CPUPerc": "32.64%",
+          "Container": "geo-tracking-test-task-api-6",
+          "ID": "ee7704abbaf2",
+          "MemPerc": "32.17%",
+          "MemUsage": "103MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-6",
+          "NetIO": "1.55GB / 1.77GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "89.6MB / 0B",
+          "CPUPerc": "20.19%",
+          "Container": "geo-tracking-test-task-processor-2",
+          "ID": "3da849e48e8d",
+          "MemPerc": "21.87%",
+          "MemUsage": "83.98MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-2",
+          "NetIO": "967MB / 1.91GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "46.3MB / 0B",
+          "CPUPerc": "20.95%",
+          "Container": "geo-tracking-test-task-processor-4",
+          "ID": "d808b18375fd",
+          "MemPerc": "22.42%",
+          "MemUsage": "86.1MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-4",
+          "NetIO": "1.91GB / 3.76GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "35.3MB / 0B",
+          "CPUPerc": "20.86%",
+          "Container": "geo-tracking-test-task-processor-6",
+          "ID": "da85321ae924",
+          "MemPerc": "22.07%",
+          "MemUsage": "84.77MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-6",
+          "NetIO": "1.91GB / 3.77GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "34.5MB / 0B",
+          "CPUPerc": "21.55%",
+          "Container": "geo-tracking-test-task-processor-8",
+          "ID": "021ac279f1ff",
+          "MemPerc": "22.31%",
+          "MemUsage": "85.69MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-8",
+          "NetIO": "1.91GB / 3.77GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "1.36GB / 7.83GB",
+          "CPUPerc": "74.32%",
+          "Container": "geo-tracking-test-task-db-1",
+          "ID": "89d793296282",
+          "MemPerc": "28.07%",
+          "MemUsage": "431.1MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-db-1",
+          "NetIO": "2.67GB / 3.93GB",
+          "PIDs": "43"
+        },
+        {
+          "BlockIO": "52.6MB / 0B",
+          "CPUPerc": "39.20%",
+          "Container": "geo-tracking-test-task-gateway-2",
+          "ID": "846e871e7f41",
+          "MemPerc": "16.39%",
+          "MemUsage": "52.45MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-2",
+          "NetIO": "21.8GB / 9.74GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "68.3MB / 0B",
+          "CPUPerc": "20.46%",
+          "Container": "geo-tracking-test-task-gateway-1",
+          "ID": "6c1c94714156",
+          "MemPerc": "15.93%",
+          "MemUsage": "50.99MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-1",
+          "NetIO": "3.34GB / 1.24GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "36MB / 0B",
+          "CPUPerc": "44.48%",
+          "Container": "geo-tracking-test-task-edge-1",
+          "ID": "4f9f5d01d4a5",
+          "MemPerc": "8.03%",
+          "MemUsage": "20.55MiB / 256MiB",
+          "Name": "geo-tracking-test-task-edge-1",
+          "NetIO": "4.28GB / 3.84GB",
+          "PIDs": "15"
+        },
+        {
+          "BlockIO": "672MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-postgres-exporter-1",
+          "ID": "6e9b0de440f0",
+          "MemPerc": "7.63%",
+          "MemUsage": "9.762MiB / 128MiB",
+          "Name": "geo-tracking-test-task-postgres-exporter-1",
+          "NetIO": "68MB / 33.4MB",
+          "PIDs": "14"
+        },
+        {
+          "BlockIO": "336MB / 0B",
+          "CPUPerc": "0.01%",
+          "Container": "geo-tracking-test-task-nats-exporter-1",
+          "ID": "df5d52cdf43e",
+          "MemPerc": "22.02%",
+          "MemUsage": "14.09MiB / 64MiB",
+          "Name": "geo-tracking-test-task-nats-exporter-1",
+          "NetIO": "12.4MB / 5.32MB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "630MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-kafka-exporter-1",
+          "ID": "df26caa92764",
+          "MemPerc": "25.42%",
+          "MemUsage": "32.54MiB / 128MiB",
+          "Name": "geo-tracking-test-task-kafka-exporter-1",
+          "NetIO": "2.35GB / 1.25GB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "9.26GB / 168MB",
+          "CPUPerc": "0.16%",
+          "Container": "geo-tracking-test-task-grafana-1",
+          "ID": "e23bcdf6c613",
+          "MemPerc": "33.29%",
+          "MemUsage": "85.21MiB / 256MiB",
+          "Name": "geo-tracking-test-task-grafana-1",
+          "NetIO": "23.5MB / 159kB",
+          "PIDs": "22"
+        },
+        {
+          "BlockIO": "44.5MB / 0B",
+          "CPUPerc": "7.19%",
+          "Container": "geo-tracking-test-task-nats-1",
+          "ID": "52f0d045484f",
+          "MemPerc": "6.30%",
+          "MemUsage": "16.13MiB / 256MiB",
+          "Name": "geo-tracking-test-task-nats-1",
+          "NetIO": "1.32GB / 2.37GB",
+          "PIDs": "9"
+        },
+        {
+          "BlockIO": "151MB / 24.1MB",
+          "CPUPerc": "68.24%",
+          "Container": "geo-tracking-test-task-kafka-1",
+          "ID": "3bd667115a35",
+          "MemPerc": "51.14%",
+          "MemUsage": "785.5MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-kafka-1",
+          "NetIO": "134MB / 63.1MB",
+          "PIDs": "100"
+        },
+        {
+          "BlockIO": "4.44GB / 125MB",
+          "CPUPerc": "1.69%",
+          "Container": "geo-tracking-test-task-prometheus-1",
+          "ID": "86ef08f4075c",
+          "MemPerc": "23.88%",
+          "MemUsage": "183.4MiB / 768MiB",
+          "Name": "geo-tracking-test-task-prometheus-1",
+          "NetIO": "867MB / 18.7MB",
+          "PIDs": "12"
+        }
+      ]
+    },
+    {
+      "sampled_at": "2026-10-01T21:59:02.094223+00:00",
+      "metrics": {
+        "accepted_per_second": 20043.58136464459,
+        "committed_per_second": 19976.94469683195,
+        "consumer_lag": 967.0,
+        "freshness_p95_seconds": 0.21311043810787064,
+        "batch_p95_seconds": 0.03809682087421567,
+        "api_loop_lag_p99_seconds": 0.06945443756859321,
+        "database_statement_seconds_per_second": 0.8851409603098167
+      },
+      "containers": [
+        {
+          "BlockIO": "49MB / 0B",
+          "CPUPerc": "24.87%",
+          "Container": "geo-tracking-test-task-processor-11",
+          "ID": "b2733450a14d",
+          "MemPerc": "22.53%",
+          "MemUsage": "86.53MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-11",
+          "NetIO": "1.93GB / 3.82GB",
+          "PIDs": "7"
+        },
+        {
+          "BlockIO": "56MB / 0B",
+          "CPUPerc": "22.91%",
+          "Container": "geo-tracking-test-task-processor-9",
+          "ID": "4331dd1a4b20",
+          "MemPerc": "22.71%",
+          "MemUsage": "87.21MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-9",
+          "NetIO": "1.92GB / 3.8GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "146MB / 0B",
+          "CPUPerc": "36.26%",
+          "Container": "geo-tracking-test-task-api-4",
+          "ID": "20789fd15595",
+          "MemPerc": "32.42%",
+          "MemUsage": "103.7MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-4",
+          "NetIO": "1.55GB / 1.78GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "134MB / 0B",
+          "CPUPerc": "36.45%",
+          "Container": "geo-tracking-test-task-api-1",
+          "ID": "ce531ea54198",
+          "MemPerc": "31.99%",
+          "MemUsage": "102.4MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-1",
+          "NetIO": "484MB / 532MB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "24.69%",
+          "Container": "geo-tracking-test-task-processor-10",
+          "ID": "72a2ef0c5d0c",
+          "MemPerc": "21.56%",
+          "MemUsage": "82.77MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-10",
+          "NetIO": "1.92GB / 3.79GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "84MB / 0B",
+          "CPUPerc": "35.39%",
+          "Container": "geo-tracking-test-task-api-2",
+          "ID": "e83f6947ec92",
+          "MemPerc": "33.47%",
+          "MemUsage": "107.1MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-2",
+          "NetIO": "1.55GB / 1.78GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "40.7MB / 0B",
+          "CPUPerc": "24.44%",
+          "Container": "geo-tracking-test-task-processor-7",
+          "ID": "a8d5f297bf87",
+          "MemPerc": "22.71%",
+          "MemUsage": "87.21MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-7",
+          "NetIO": "1.92GB / 3.81GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "65.7MB / 0B",
+          "CPUPerc": "35.63%",
+          "Container": "geo-tracking-test-task-api-6",
+          "ID": "ee7704abbaf2",
+          "MemPerc": "32.02%",
+          "MemUsage": "102.5MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-6",
+          "NetIO": "1.55GB / 1.78GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "89.6MB / 0B",
+          "CPUPerc": "25.67%",
+          "Container": "geo-tracking-test-task-processor-2",
+          "ID": "3da849e48e8d",
+          "MemPerc": "21.87%",
+          "MemUsage": "83.99MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-2",
+          "NetIO": "975MB / 1.92GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "46.3MB / 0B",
+          "CPUPerc": "24.91%",
+          "Container": "geo-tracking-test-task-processor-4",
+          "ID": "d808b18375fd",
+          "MemPerc": "22.43%",
+          "MemUsage": "86.11MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-4",
+          "NetIO": "1.91GB / 3.78GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "35.3MB / 0B",
+          "CPUPerc": "23.77%",
+          "Container": "geo-tracking-test-task-processor-6",
+          "ID": "da85321ae924",
+          "MemPerc": "22.07%",
+          "MemUsage": "84.74MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-6",
+          "NetIO": "1.91GB / 3.78GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "34.5MB / 0B",
+          "CPUPerc": "24.10%",
+          "Container": "geo-tracking-test-task-processor-8",
+          "ID": "021ac279f1ff",
+          "MemPerc": "22.31%",
+          "MemUsage": "85.68MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-8",
+          "NetIO": "1.91GB / 3.79GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "1.36GB / 7.91GB",
+          "CPUPerc": "96.77%",
+          "Container": "geo-tracking-test-task-db-1",
+          "ID": "89d793296282",
+          "MemPerc": "28.13%",
+          "MemUsage": "432.1MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-db-1",
+          "NetIO": "2.7GB / 3.97GB",
+          "PIDs": "43"
+        },
+        {
+          "BlockIO": "52.6MB / 0B",
+          "CPUPerc": "48.95%",
+          "Container": "geo-tracking-test-task-gateway-2",
+          "ID": "846e871e7f41",
+          "MemPerc": "16.43%",
+          "MemUsage": "52.59MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-2",
+          "NetIO": "21.9GB / 9.79GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "68.3MB / 0B",
+          "CPUPerc": "24.46%",
+          "Container": "geo-tracking-test-task-gateway-1",
+          "ID": "6c1c94714156",
+          "MemPerc": "15.97%",
+          "MemUsage": "51.11MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-1",
+          "NetIO": "3.37GB / 1.26GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "36MB / 0B",
+          "CPUPerc": "48.77%",
+          "Container": "geo-tracking-test-task-edge-1",
+          "ID": "4f9f5d01d4a5",
+          "MemPerc": "8.03%",
+          "MemUsage": "20.55MiB / 256MiB",
+          "Name": "geo-tracking-test-task-edge-1",
+          "NetIO": "4.39GB / 3.94GB",
+          "PIDs": "15"
+        },
+        {
+          "BlockIO": "672MB / 0B",
+          "CPUPerc": "1.50%",
+          "Container": "geo-tracking-test-task-postgres-exporter-1",
+          "ID": "6e9b0de440f0",
+          "MemPerc": "8.40%",
+          "MemUsage": "10.75MiB / 128MiB",
+          "Name": "geo-tracking-test-task-postgres-exporter-1",
+          "NetIO": "68.2MB / 33.5MB",
+          "PIDs": "14"
+        },
+        {
+          "BlockIO": "336MB / 0B",
+          "CPUPerc": "0.99%",
+          "Container": "geo-tracking-test-task-nats-exporter-1",
+          "ID": "df5d52cdf43e",
+          "MemPerc": "22.50%",
+          "MemUsage": "14.4MiB / 64MiB",
+          "Name": "geo-tracking-test-task-nats-exporter-1",
+          "NetIO": "12.4MB / 5.33MB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "630MB / 0B",
+          "CPUPerc": "0.12%",
+          "Container": "geo-tracking-test-task-kafka-exporter-1",
+          "ID": "df26caa92764",
+          "MemPerc": "24.66%",
+          "MemUsage": "31.56MiB / 128MiB",
+          "Name": "geo-tracking-test-task-kafka-exporter-1",
+          "NetIO": "2.35GB / 1.25GB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "9.27GB / 168MB",
+          "CPUPerc": "0.22%",
+          "Container": "geo-tracking-test-task-grafana-1",
+          "ID": "e23bcdf6c613",
+          "MemPerc": "36.98%",
+          "MemUsage": "94.68MiB / 256MiB",
+          "Name": "geo-tracking-test-task-grafana-1",
+          "NetIO": "23.5MB / 159kB",
+          "PIDs": "22"
+        },
+        {
+          "BlockIO": "44.5MB / 0B",
+          "CPUPerc": "6.70%",
+          "Container": "geo-tracking-test-task-nats-1",
+          "ID": "52f0d045484f",
+          "MemPerc": "5.98%",
+          "MemUsage": "15.31MiB / 256MiB",
+          "Name": "geo-tracking-test-task-nats-1",
+          "NetIO": "1.41GB / 2.49GB",
+          "PIDs": "9"
+        },
+        {
+          "BlockIO": "158MB / 24.5MB",
+          "CPUPerc": "73.09%",
+          "Container": "geo-tracking-test-task-kafka-1",
+          "ID": "3bd667115a35",
+          "MemPerc": "55.22%",
+          "MemUsage": "848.2MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-kafka-1",
+          "NetIO": "168MB / 99.9MB",
+          "PIDs": "100"
+        },
+        {
+          "BlockIO": "4.44GB / 125MB",
+          "CPUPerc": "5.44%",
+          "Container": "geo-tracking-test-task-prometheus-1",
+          "ID": "86ef08f4075c",
+          "MemPerc": "23.84%",
+          "MemUsage": "183.1MiB / 768MiB",
+          "Name": "geo-tracking-test-task-prometheus-1",
+          "NetIO": "870MB / 18.8MB",
+          "PIDs": "12"
+        }
+      ]
+    },
+    {
+      "sampled_at": "2026-10-01T21:59:15.253316+00:00",
+      "metrics": {
+        "accepted_per_second": 20043.614670559255,
+        "committed_per_second": 19957.230313499575,
+        "consumer_lag": 1253.0,
+        "freshness_p95_seconds": 0.23682453240412765,
+        "batch_p95_seconds": 0.04607389504459723,
+        "api_loop_lag_p99_seconds": 0.06945454545454548,
+        "database_statement_seconds_per_second": 0.9186969690004679
+      },
+      "containers": [
+        {
+          "BlockIO": "49MB / 0B",
+          "CPUPerc": "22.56%",
+          "Container": "geo-tracking-test-task-processor-11",
+          "ID": "b2733450a14d",
+          "MemPerc": "22.54%",
+          "MemUsage": "86.56MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-11",
+          "NetIO": "1.94GB / 3.84GB",
+          "PIDs": "7"
+        },
+        {
+          "BlockIO": "56MB / 0B",
+          "CPUPerc": "23.38%",
+          "Container": "geo-tracking-test-task-processor-9",
+          "ID": "4331dd1a4b20",
+          "MemPerc": "22.71%",
+          "MemUsage": "87.19MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-9",
+          "NetIO": "1.93GB / 3.81GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "146MB / 0B",
+          "CPUPerc": "32.70%",
+          "Container": "geo-tracking-test-task-api-4",
+          "ID": "20789fd15595",
+          "MemPerc": "32.37%",
+          "MemUsage": "103.6MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-4",
+          "NetIO": "1.56GB / 1.78GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "134MB / 0B",
+          "CPUPerc": "32.63%",
+          "Container": "geo-tracking-test-task-api-1",
+          "ID": "ce531ea54198",
+          "MemPerc": "32.09%",
+          "MemUsage": "102.7MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-1",
+          "NetIO": "492MB / 541MB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "22.35%",
+          "Container": "geo-tracking-test-task-processor-10",
+          "ID": "72a2ef0c5d0c",
+          "MemPerc": "21.56%",
+          "MemUsage": "82.79MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-10",
+          "NetIO": "1.92GB / 3.81GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "84MB / 0B",
+          "CPUPerc": "33.79%",
+          "Container": "geo-tracking-test-task-api-2",
+          "ID": "e83f6947ec92",
+          "MemPerc": "33.55%",
+          "MemUsage": "107.4MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-2",
+          "NetIO": "1.56GB / 1.79GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "40.7MB / 0B",
+          "CPUPerc": "23.04%",
+          "Container": "geo-tracking-test-task-processor-7",
+          "ID": "a8d5f297bf87",
+          "MemPerc": "22.71%",
+          "MemUsage": "87.22MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-7",
+          "NetIO": "1.93GB / 3.82GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "65.7MB / 0B",
+          "CPUPerc": "31.64%",
+          "Container": "geo-tracking-test-task-api-6",
+          "ID": "ee7704abbaf2",
+          "MemPerc": "32.13%",
+          "MemUsage": "102.8MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-6",
+          "NetIO": "1.56GB / 1.78GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "89.6MB / 0B",
+          "CPUPerc": "22.94%",
+          "Container": "geo-tracking-test-task-processor-2",
+          "ID": "3da849e48e8d",
+          "MemPerc": "21.86%",
+          "MemUsage": "83.93MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-2",
+          "NetIO": "983MB / 1.94GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "46.3MB / 0B",
+          "CPUPerc": "23.00%",
+          "Container": "geo-tracking-test-task-processor-4",
+          "ID": "d808b18375fd",
+          "MemPerc": "22.42%",
+          "MemUsage": "86.09MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-4",
+          "NetIO": "1.92GB / 3.79GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "35.3MB / 0B",
+          "CPUPerc": "22.94%",
+          "Container": "geo-tracking-test-task-processor-6",
+          "ID": "da85321ae924",
+          "MemPerc": "22.07%",
+          "MemUsage": "84.73MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-6",
+          "NetIO": "1.92GB / 3.8GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "34.5MB / 0B",
+          "CPUPerc": "22.66%",
+          "Container": "geo-tracking-test-task-processor-8",
+          "ID": "021ac279f1ff",
+          "MemPerc": "22.31%",
+          "MemUsage": "85.66MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-8",
+          "NetIO": "1.92GB / 3.8GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "1.36GB / 7.99GB",
+          "CPUPerc": "78.18%",
+          "Container": "geo-tracking-test-task-db-1",
+          "ID": "89d793296282",
+          "MemPerc": "28.10%",
+          "MemUsage": "431.7MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-db-1",
+          "NetIO": "2.73GB / 4.01GB",
+          "PIDs": "43"
+        },
+        {
+          "BlockIO": "52.6MB / 0B",
+          "CPUPerc": "47.72%",
+          "Container": "geo-tracking-test-task-gateway-2",
+          "ID": "846e871e7f41",
+          "MemPerc": "16.28%",
+          "MemUsage": "52.11MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-2",
+          "NetIO": "22GB / 9.84GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "68.3MB / 0B",
+          "CPUPerc": "22.17%",
+          "Container": "geo-tracking-test-task-gateway-1",
+          "ID": "6c1c94714156",
+          "MemPerc": "15.87%",
+          "MemUsage": "50.77MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-1",
+          "NetIO": "3.4GB / 1.27GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "36MB / 0B",
+          "CPUPerc": "45.85%",
+          "Container": "geo-tracking-test-task-edge-1",
+          "ID": "4f9f5d01d4a5",
+          "MemPerc": "8.03%",
+          "MemUsage": "20.55MiB / 256MiB",
+          "Name": "geo-tracking-test-task-edge-1",
+          "NetIO": "4.49GB / 4.03GB",
+          "PIDs": "15"
+        },
+        {
+          "BlockIO": "672MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-postgres-exporter-1",
+          "ID": "6e9b0de440f0",
+          "MemPerc": "7.51%",
+          "MemUsage": "9.609MiB / 128MiB",
+          "Name": "geo-tracking-test-task-postgres-exporter-1",
+          "NetIO": "68.3MB / 33.5MB",
+          "PIDs": "14"
+        },
+        {
+          "BlockIO": "336MB / 0B",
+          "CPUPerc": "0.02%",
+          "Container": "geo-tracking-test-task-nats-exporter-1",
+          "ID": "df5d52cdf43e",
+          "MemPerc": "19.89%",
+          "MemUsage": "12.73MiB / 64MiB",
+          "Name": "geo-tracking-test-task-nats-exporter-1",
+          "NetIO": "12.4MB / 5.34MB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "630MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-kafka-exporter-1",
+          "ID": "df26caa92764",
+          "MemPerc": "25.45%",
+          "MemUsage": "32.57MiB / 128MiB",
+          "Name": "geo-tracking-test-task-kafka-exporter-1",
+          "NetIO": "2.36GB / 1.26GB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "9.27GB / 168MB",
+          "CPUPerc": "0.15%",
+          "Container": "geo-tracking-test-task-grafana-1",
+          "ID": "e23bcdf6c613",
+          "MemPerc": "36.76%",
+          "MemUsage": "94.1MiB / 256MiB",
+          "Name": "geo-tracking-test-task-grafana-1",
+          "NetIO": "23.5MB / 159kB",
+          "PIDs": "22"
+        },
+        {
+          "BlockIO": "44.5MB / 0B",
+          "CPUPerc": "6.90%",
+          "Container": "geo-tracking-test-task-nats-1",
+          "ID": "52f0d045484f",
+          "MemPerc": "6.02%",
+          "MemUsage": "15.41MiB / 256MiB",
+          "Name": "geo-tracking-test-task-nats-1",
+          "NetIO": "1.48GB / 2.6GB",
+          "PIDs": "9"
+        },
+        {
+          "BlockIO": "158MB / 24.9MB",
+          "CPUPerc": "48.11%",
+          "Container": "geo-tracking-test-task-kafka-1",
+          "ID": "3bd667115a35",
+          "MemPerc": "54.33%",
+          "MemUsage": "834.6MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-kafka-1",
+          "NetIO": "202MB / 138MB",
+          "PIDs": "100"
+        },
+        {
+          "BlockIO": "4.44GB / 125MB",
+          "CPUPerc": "0.13%",
+          "Container": "geo-tracking-test-task-prometheus-1",
+          "ID": "86ef08f4075c",
+          "MemPerc": "23.85%",
+          "MemUsage": "183.2MiB / 768MiB",
+          "Name": "geo-tracking-test-task-prometheus-1",
+          "NetIO": "871MB / 18.8MB",
+          "PIDs": "12"
+        }
+      ]
+    },
+    {
+      "sampled_at": "2026-10-01T21:59:27.550529+00:00",
+      "metrics": {
+        "accepted_per_second": 21694.563636363637,
+        "committed_per_second": 22440.34545454545,
+        "consumer_lag": 1094.0,
+        "freshness_p95_seconds": 0.24138540734109218,
+        "batch_p95_seconds": 0.04742005668556183,
+        "api_loop_lag_p99_seconds": 0.06945454545454548,
+        "database_statement_seconds_per_second": 0.9802882491455877
+      },
+      "containers": [
+        {
+          "BlockIO": "49MB / 0B",
+          "CPUPerc": "41.59%",
+          "Container": "geo-tracking-test-task-processor-11",
+          "ID": "b2733450a14d",
+          "MemPerc": "21.92%",
+          "MemUsage": "84.19MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-11",
+          "NetIO": "1.95GB / 3.85GB",
+          "PIDs": "7"
+        },
+        {
+          "BlockIO": "58.7MB / 0B",
+          "CPUPerc": "38.66%",
+          "Container": "geo-tracking-test-task-processor-9",
+          "ID": "4331dd1a4b20",
+          "MemPerc": "22.97%",
+          "MemUsage": "88.19MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-9",
+          "NetIO": "1.94GB / 3.83GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "149MB / 0B",
+          "CPUPerc": "53.90%",
+          "Container": "geo-tracking-test-task-api-4",
+          "ID": "20789fd15595",
+          "MemPerc": "32.35%",
+          "MemUsage": "103.5MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-4",
+          "NetIO": "1.57GB / 1.79GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "134MB / 0B",
+          "CPUPerc": "49.74%",
+          "Container": "geo-tracking-test-task-api-1",
+          "ID": "ce531ea54198",
+          "MemPerc": "31.99%",
+          "MemUsage": "102.4MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-1",
+          "NetIO": "500MB / 549MB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "37.67%",
+          "Container": "geo-tracking-test-task-processor-10",
+          "ID": "72a2ef0c5d0c",
+          "MemPerc": "21.54%",
+          "MemUsage": "82.73MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-10",
+          "NetIO": "1.93GB / 3.82GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "84MB / 0B",
+          "CPUPerc": "49.19%",
+          "Container": "geo-tracking-test-task-api-2",
+          "ID": "e83f6947ec92",
+          "MemPerc": "33.59%",
+          "MemUsage": "107.5MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-2",
+          "NetIO": "1.57GB / 1.8GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "40.7MB / 0B",
+          "CPUPerc": "35.63%",
+          "Container": "geo-tracking-test-task-processor-7",
+          "ID": "a8d5f297bf87",
+          "MemPerc": "22.71%",
+          "MemUsage": "87.22MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-7",
+          "NetIO": "1.94GB / 3.84GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "65.7MB / 0B",
+          "CPUPerc": "49.06%",
+          "Container": "geo-tracking-test-task-api-6",
+          "ID": "ee7704abbaf2",
+          "MemPerc": "32.12%",
+          "MemUsage": "102.8MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-6",
+          "NetIO": "1.57GB / 1.79GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "89.8MB / 0B",
+          "CPUPerc": "43.29%",
+          "Container": "geo-tracking-test-task-processor-2",
+          "ID": "3da849e48e8d",
+          "MemPerc": "21.90%",
+          "MemUsage": "84.11MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-2",
+          "NetIO": "990MB / 1.95GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "46.4MB / 0B",
+          "CPUPerc": "40.31%",
+          "Container": "geo-tracking-test-task-processor-4",
+          "ID": "d808b18375fd",
+          "MemPerc": "22.43%",
+          "MemUsage": "86.13MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-4",
+          "NetIO": "1.93GB / 3.81GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "35.3MB / 0B",
+          "CPUPerc": "41.44%",
+          "Container": "geo-tracking-test-task-processor-6",
+          "ID": "da85321ae924",
+          "MemPerc": "21.98%",
+          "MemUsage": "84.42MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-6",
+          "NetIO": "1.93GB / 3.81GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "34.5MB / 0B",
+          "CPUPerc": "42.71%",
+          "Container": "geo-tracking-test-task-processor-8",
+          "ID": "021ac279f1ff",
+          "MemPerc": "22.31%",
+          "MemUsage": "85.68MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-8",
+          "NetIO": "1.93GB / 3.82GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "1.38GB / 8.07GB",
+          "CPUPerc": "64.47%",
+          "Container": "geo-tracking-test-task-db-1",
+          "ID": "89d793296282",
+          "MemPerc": "28.22%",
+          "MemUsage": "433.5MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-db-1",
+          "NetIO": "2.76GB / 4.04GB",
+          "PIDs": "43"
+        },
+        {
+          "BlockIO": "52.6MB / 0B",
+          "CPUPerc": "57.63%",
+          "Container": "geo-tracking-test-task-gateway-2",
+          "ID": "846e871e7f41",
+          "MemPerc": "16.40%",
+          "MemUsage": "52.48MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-2",
+          "NetIO": "22.1GB / 9.9GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "68.5MB / 0B",
+          "CPUPerc": "38.72%",
+          "Container": "geo-tracking-test-task-gateway-1",
+          "ID": "6c1c94714156",
+          "MemPerc": "16.09%",
+          "MemUsage": "51.49MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-1",
+          "NetIO": "3.43GB / 1.29GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "38.3MB / 0B",
+          "CPUPerc": "43.43%",
+          "Container": "geo-tracking-test-task-edge-1",
+          "ID": "4f9f5d01d4a5",
+          "MemPerc": "9.00%",
+          "MemUsage": "23.05MiB / 256MiB",
+          "Name": "geo-tracking-test-task-edge-1",
+          "NetIO": "4.6GB / 4.13GB",
+          "PIDs": "15"
+        },
+        {
+          "BlockIO": "680MB / 0B",
+          "CPUPerc": "0.95%",
+          "Container": "geo-tracking-test-task-postgres-exporter-1",
+          "ID": "6e9b0de440f0",
+          "MemPerc": "15.54%",
+          "MemUsage": "19.89MiB / 128MiB",
+          "Name": "geo-tracking-test-task-postgres-exporter-1",
+          "NetIO": "68.5MB / 33.6MB",
+          "PIDs": "14"
+        },
+        {
+          "BlockIO": "337MB / 0B",
+          "CPUPerc": "0.44%",
+          "Container": "geo-tracking-test-task-nats-exporter-1",
+          "ID": "df5d52cdf43e",
+          "MemPerc": "22.01%",
+          "MemUsage": "14.09MiB / 64MiB",
+          "Name": "geo-tracking-test-task-nats-exporter-1",
+          "NetIO": "12.5MB / 5.36MB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "630MB / 0B",
+          "CPUPerc": "2.46%",
+          "Container": "geo-tracking-test-task-kafka-exporter-1",
+          "ID": "df26caa92764",
+          "MemPerc": "17.71%",
+          "MemUsage": "22.67MiB / 128MiB",
+          "Name": "geo-tracking-test-task-kafka-exporter-1",
+          "NetIO": "2.37GB / 1.26GB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "9.27GB / 168MB",
+          "CPUPerc": "0.17%",
+          "Container": "geo-tracking-test-task-grafana-1",
+          "ID": "e23bcdf6c613",
+          "MemPerc": "28.85%",
+          "MemUsage": "73.86MiB / 256MiB",
+          "Name": "geo-tracking-test-task-grafana-1",
+          "NetIO": "23.5MB / 159kB",
+          "PIDs": "22"
+        },
+        {
+          "BlockIO": "51.6MB / 0B",
+          "CPUPerc": "5.73%",
+          "Container": "geo-tracking-test-task-nats-1",
+          "ID": "52f0d045484f",
+          "MemPerc": "6.96%",
+          "MemUsage": "17.81MiB / 256MiB",
+          "Name": "geo-tracking-test-task-nats-1",
+          "NetIO": "1.56GB / 2.72GB",
+          "PIDs": "9"
+        },
+        {
+          "BlockIO": "198MB / 25.3MB",
+          "CPUPerc": "54.03%",
+          "Container": "geo-tracking-test-task-kafka-1",
+          "ID": "3bd667115a35",
+          "MemPerc": "39.32%",
+          "MemUsage": "603.9MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-kafka-1",
+          "NetIO": "236MB / 174MB",
+          "PIDs": "100"
+        },
+        {
+          "BlockIO": "4.46GB / 126MB",
+          "CPUPerc": "0.83%",
+          "Container": "geo-tracking-test-task-prometheus-1",
+          "ID": "86ef08f4075c",
+          "MemPerc": "22.92%",
+          "MemUsage": "176MiB / 768MiB",
+          "Name": "geo-tracking-test-task-prometheus-1",
+          "NetIO": "873MB / 18.8MB",
+          "PIDs": "12"
+        }
+      ]
+    },
+    {
+      "sampled_at": "2026-10-01T21:59:40.218846+00:00",
+      "metrics": {
+        "accepted_per_second": 24008.21818181818,
+        "committed_per_second": 21059.034411026656,
+        "consumer_lag": 989.0,
+        "freshness_p95_seconds": 0.23229452028054703,
+        "batch_p95_seconds": 0.043337421119435914,
+        "api_loop_lag_p99_seconds": 0.008109997599877765,
+        "database_statement_seconds_per_second": 0.5299043409872687
+      },
+      "containers": [
+        {
+          "BlockIO": "49MB / 0B",
+          "CPUPerc": "26.64%",
+          "Container": "geo-tracking-test-task-processor-11",
+          "ID": "b2733450a14d",
+          "MemPerc": "21.93%",
+          "MemUsage": "84.2MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-11",
+          "NetIO": "1.95GB / 3.86GB",
+          "PIDs": "7"
+        },
+        {
+          "BlockIO": "58.7MB / 0B",
+          "CPUPerc": "27.52%",
+          "Container": "geo-tracking-test-task-processor-9",
+          "ID": "4331dd1a4b20",
+          "MemPerc": "22.96%",
+          "MemUsage": "88.16MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-9",
+          "NetIO": "1.94GB / 3.84GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "149MB / 0B",
+          "CPUPerc": "33.44%",
+          "Container": "geo-tracking-test-task-api-4",
+          "ID": "20789fd15595",
+          "MemPerc": "32.40%",
+          "MemUsage": "103.7MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-4",
+          "NetIO": "1.58GB / 1.8GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "134MB / 0B",
+          "CPUPerc": "31.25%",
+          "Container": "geo-tracking-test-task-api-1",
+          "ID": "ce531ea54198",
+          "MemPerc": "32.14%",
+          "MemUsage": "102.8MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-1",
+          "NetIO": "508MB / 558MB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "27.24%",
+          "Container": "geo-tracking-test-task-processor-10",
+          "ID": "72a2ef0c5d0c",
+          "MemPerc": "21.55%",
+          "MemUsage": "82.75MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-10",
+          "NetIO": "1.94GB / 3.83GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "84MB / 0B",
+          "CPUPerc": "32.72%",
+          "Container": "geo-tracking-test-task-api-2",
+          "ID": "e83f6947ec92",
+          "MemPerc": "33.54%",
+          "MemUsage": "107.3MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-2",
+          "NetIO": "1.58GB / 1.81GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "40.7MB / 0B",
+          "CPUPerc": "27.52%",
+          "Container": "geo-tracking-test-task-processor-7",
+          "ID": "a8d5f297bf87",
+          "MemPerc": "22.72%",
+          "MemUsage": "87.24MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-7",
+          "NetIO": "1.95GB / 3.85GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "65.7MB / 0B",
+          "CPUPerc": "32.29%",
+          "Container": "geo-tracking-test-task-api-6",
+          "ID": "ee7704abbaf2",
+          "MemPerc": "32.06%",
+          "MemUsage": "102.6MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-6",
+          "NetIO": "1.58GB / 1.8GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "89.8MB / 0B",
+          "CPUPerc": "26.65%",
+          "Container": "geo-tracking-test-task-processor-2",
+          "ID": "3da849e48e8d",
+          "MemPerc": "21.91%",
+          "MemUsage": "84.13MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-2",
+          "NetIO": "998MB / 1.97GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "46.4MB / 0B",
+          "CPUPerc": "26.36%",
+          "Container": "geo-tracking-test-task-processor-4",
+          "ID": "d808b18375fd",
+          "MemPerc": "22.44%",
+          "MemUsage": "86.18MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-4",
+          "NetIO": "1.94GB / 3.82GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "35.3MB / 0B",
+          "CPUPerc": "26.39%",
+          "Container": "geo-tracking-test-task-processor-6",
+          "ID": "da85321ae924",
+          "MemPerc": "21.99%",
+          "MemUsage": "84.43MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-6",
+          "NetIO": "1.94GB / 3.83GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "34.5MB / 0B",
+          "CPUPerc": "26.38%",
+          "Container": "geo-tracking-test-task-processor-8",
+          "ID": "021ac279f1ff",
+          "MemPerc": "22.32%",
+          "MemUsage": "85.7MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-8",
+          "NetIO": "1.94GB / 3.83GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "1.38GB / 8.17GB",
+          "CPUPerc": "84.97%",
+          "Container": "geo-tracking-test-task-db-1",
+          "ID": "89d793296282",
+          "MemPerc": "28.25%",
+          "MemUsage": "433.9MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-db-1",
+          "NetIO": "2.8GB / 4.08GB",
+          "PIDs": "45"
+        },
+        {
+          "BlockIO": "52.6MB / 0B",
+          "CPUPerc": "50.92%",
+          "Container": "geo-tracking-test-task-gateway-2",
+          "ID": "846e871e7f41",
+          "MemPerc": "16.29%",
+          "MemUsage": "52.14MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-2",
+          "NetIO": "22.2GB / 9.95GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "68.5MB / 0B",
+          "CPUPerc": "26.94%",
+          "Container": "geo-tracking-test-task-gateway-1",
+          "ID": "6c1c94714156",
+          "MemPerc": "15.93%",
+          "MemUsage": "50.98MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-1",
+          "NetIO": "3.46GB / 1.31GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "38.3MB / 0B",
+          "CPUPerc": "46.37%",
+          "Container": "geo-tracking-test-task-edge-1",
+          "ID": "4f9f5d01d4a5",
+          "MemPerc": "9.10%",
+          "MemUsage": "23.3MiB / 256MiB",
+          "Name": "geo-tracking-test-task-edge-1",
+          "NetIO": "4.72GB / 4.23GB",
+          "PIDs": "15"
+        },
+        {
+          "BlockIO": "680MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-postgres-exporter-1",
+          "ID": "6e9b0de440f0",
+          "MemPerc": "16.11%",
+          "MemUsage": "20.62MiB / 128MiB",
+          "Name": "geo-tracking-test-task-postgres-exporter-1",
+          "NetIO": "68.6MB / 33.7MB",
+          "PIDs": "14"
+        },
+        {
+          "BlockIO": "337MB / 0B",
+          "CPUPerc": "0.01%",
+          "Container": "geo-tracking-test-task-nats-exporter-1",
+          "ID": "df5d52cdf43e",
+          "MemPerc": "21.84%",
+          "MemUsage": "13.98MiB / 64MiB",
+          "Name": "geo-tracking-test-task-nats-exporter-1",
+          "NetIO": "12.5MB / 5.36MB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "631MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-kafka-exporter-1",
+          "ID": "df26caa92764",
+          "MemPerc": "19.76%",
+          "MemUsage": "25.29MiB / 128MiB",
+          "Name": "geo-tracking-test-task-kafka-exporter-1",
+          "NetIO": "2.38GB / 1.27GB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "9.32GB / 168MB",
+          "CPUPerc": "0.16%",
+          "Container": "geo-tracking-test-task-grafana-1",
+          "ID": "e23bcdf6c613",
+          "MemPerc": "46.30%",
+          "MemUsage": "118.5MiB / 256MiB",
+          "Name": "geo-tracking-test-task-grafana-1",
+          "NetIO": "23.5MB / 159kB",
+          "PIDs": "22"
+        },
+        {
+          "BlockIO": "51.6MB / 0B",
+          "CPUPerc": "9.24%",
+          "Container": "geo-tracking-test-task-nats-1",
+          "ID": "52f0d045484f",
+          "MemPerc": "7.24%",
+          "MemUsage": "18.52MiB / 256MiB",
+          "Name": "geo-tracking-test-task-nats-1",
+          "NetIO": "1.65GB / 2.83GB",
+          "PIDs": "9"
+        },
+        {
+          "BlockIO": "198MB / 25.6MB",
+          "CPUPerc": "45.60%",
+          "Container": "geo-tracking-test-task-kafka-1",
+          "ID": "3bd667115a35",
+          "MemPerc": "38.55%",
+          "MemUsage": "592.1MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-kafka-1",
+          "NetIO": "271MB / 213MB",
+          "PIDs": "100"
+        },
+        {
+          "BlockIO": "4.46GB / 126MB",
+          "CPUPerc": "1.38%",
+          "Container": "geo-tracking-test-task-prometheus-1",
+          "ID": "86ef08f4075c",
+          "MemPerc": "23.14%",
+          "MemUsage": "177.8MiB / 768MiB",
+          "Name": "geo-tracking-test-task-prometheus-1",
+          "NetIO": "875MB / 18.9MB",
+          "PIDs": "12"
+        }
+      ]
+    },
+    {
+      "sampled_at": "2026-10-01T21:59:52.766032+00:00",
+      "metrics": {
+        "accepted_per_second": 20000.254518679147,
+        "committed_per_second": 20004.49090909091,
+        "consumer_lag": 3594.0,
+        "freshness_p95_seconds": 0.20551084598698477,
+        "batch_p95_seconds": 0.03817099381017883,
+        "api_loop_lag_p99_seconds": 0.0073071428571428775,
+        "database_statement_seconds_per_second": 0.5251168707089727
+      },
+      "containers": [
+        {
+          "BlockIO": "49MB / 0B",
+          "CPUPerc": "13.98%",
+          "Container": "geo-tracking-test-task-processor-11",
+          "ID": "b2733450a14d",
+          "MemPerc": "21.93%",
+          "MemUsage": "84.22MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-11",
+          "NetIO": "1.96GB / 3.88GB",
+          "PIDs": "7"
+        },
+        {
+          "BlockIO": "58.7MB / 0B",
+          "CPUPerc": "15.61%",
+          "Container": "geo-tracking-test-task-processor-9",
+          "ID": "4331dd1a4b20",
+          "MemPerc": "22.96%",
+          "MemUsage": "88.18MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-9",
+          "NetIO": "1.95GB / 3.86GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "149MB / 0B",
+          "CPUPerc": "31.10%",
+          "Container": "geo-tracking-test-task-api-4",
+          "ID": "20789fd15595",
+          "MemPerc": "32.24%",
+          "MemUsage": "103.2MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-4",
+          "NetIO": "1.59GB / 1.81GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "134MB / 0B",
+          "CPUPerc": "30.19%",
+          "Container": "geo-tracking-test-task-api-1",
+          "ID": "ce531ea54198",
+          "MemPerc": "32.02%",
+          "MemUsage": "102.5MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-1",
+          "NetIO": "516MB / 566MB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "15.21%",
+          "Container": "geo-tracking-test-task-processor-10",
+          "ID": "72a2ef0c5d0c",
+          "MemPerc": "21.54%",
+          "MemUsage": "82.71MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-10",
+          "NetIO": "1.95GB / 3.85GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "84MB / 0B",
+          "CPUPerc": "30.81%",
+          "Container": "geo-tracking-test-task-api-2",
+          "ID": "e83f6947ec92",
+          "MemPerc": "33.50%",
+          "MemUsage": "107.2MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-2",
+          "NetIO": "1.59GB / 1.82GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "40.7MB / 0B",
+          "CPUPerc": "24.73%",
+          "Container": "geo-tracking-test-task-processor-7",
+          "ID": "a8d5f297bf87",
+          "MemPerc": "22.71%",
+          "MemUsage": "87.21MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-7",
+          "NetIO": "1.96GB / 3.86GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "65.7MB / 0B",
+          "CPUPerc": "30.94%",
+          "Container": "geo-tracking-test-task-api-6",
+          "ID": "ee7704abbaf2",
+          "MemPerc": "32.12%",
+          "MemUsage": "102.8MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-6",
+          "NetIO": "1.59GB / 1.81GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "89.8MB / 0B",
+          "CPUPerc": "14.93%",
+          "Container": "geo-tracking-test-task-processor-2",
+          "ID": "3da849e48e8d",
+          "MemPerc": "21.91%",
+          "MemUsage": "84.12MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-2",
+          "NetIO": "1.01GB / 1.98GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "46.4MB / 0B",
+          "CPUPerc": "15.95%",
+          "Container": "geo-tracking-test-task-processor-4",
+          "ID": "d808b18375fd",
+          "MemPerc": "22.43%",
+          "MemUsage": "86.13MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-4",
+          "NetIO": "1.94GB / 3.84GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "35.3MB / 0B",
+          "CPUPerc": "18.57%",
+          "Container": "geo-tracking-test-task-processor-6",
+          "ID": "da85321ae924",
+          "MemPerc": "24.32%",
+          "MemUsage": "93.4MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-6",
+          "NetIO": "1.94GB / 3.84GB",
+          "PIDs": "21"
+        },
+        {
+          "BlockIO": "34.5MB / 0B",
+          "CPUPerc": "14.57%",
+          "Container": "geo-tracking-test-task-processor-8",
+          "ID": "021ac279f1ff",
+          "MemPerc": "22.31%",
+          "MemUsage": "85.67MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-8",
+          "NetIO": "1.95GB / 3.85GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "1.38GB / 8.25GB",
+          "CPUPerc": "60.54%",
+          "Container": "geo-tracking-test-task-db-1",
+          "ID": "89d793296282",
+          "MemPerc": "28.20%",
+          "MemUsage": "433.2MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-db-1",
+          "NetIO": "2.83GB / 4.12GB",
+          "PIDs": "43"
+        },
+        {
+          "BlockIO": "52.6MB / 0B",
+          "CPUPerc": "34.65%",
+          "Container": "geo-tracking-test-task-gateway-2",
+          "ID": "846e871e7f41",
+          "MemPerc": "16.36%",
+          "MemUsage": "52.36MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-2",
+          "NetIO": "22.3GB / 10GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "68.5MB / 0B",
+          "CPUPerc": "15.88%",
+          "Container": "geo-tracking-test-task-gateway-1",
+          "ID": "6c1c94714156",
+          "MemPerc": "15.93%",
+          "MemUsage": "50.97MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-1",
+          "NetIO": "3.49GB / 1.32GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "38.3MB / 0B",
+          "CPUPerc": "40.88%",
+          "Container": "geo-tracking-test-task-edge-1",
+          "ID": "4f9f5d01d4a5",
+          "MemPerc": "9.01%",
+          "MemUsage": "23.05MiB / 256MiB",
+          "Name": "geo-tracking-test-task-edge-1",
+          "NetIO": "4.83GB / 4.33GB",
+          "PIDs": "15"
+        },
+        {
+          "BlockIO": "680MB / 0B",
+          "CPUPerc": "1.20%",
+          "Container": "geo-tracking-test-task-postgres-exporter-1",
+          "ID": "6e9b0de440f0",
+          "MemPerc": "16.82%",
+          "MemUsage": "21.54MiB / 128MiB",
+          "Name": "geo-tracking-test-task-postgres-exporter-1",
+          "NetIO": "68.8MB / 33.7MB",
+          "PIDs": "14"
+        },
+        {
+          "BlockIO": "337MB / 0B",
+          "CPUPerc": "0.01%",
+          "Container": "geo-tracking-test-task-nats-exporter-1",
+          "ID": "df5d52cdf43e",
+          "MemPerc": "22.19%",
+          "MemUsage": "14.2MiB / 64MiB",
+          "Name": "geo-tracking-test-task-nats-exporter-1",
+          "NetIO": "12.5MB / 5.38MB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "631MB / 0B",
+          "CPUPerc": "8.59%",
+          "Container": "geo-tracking-test-task-kafka-exporter-1",
+          "ID": "df26caa92764",
+          "MemPerc": "18.05%",
+          "MemUsage": "23.11MiB / 128MiB",
+          "Name": "geo-tracking-test-task-kafka-exporter-1",
+          "NetIO": "2.38GB / 1.27GB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "9.32GB / 168MB",
+          "CPUPerc": "0.13%",
+          "Container": "geo-tracking-test-task-grafana-1",
+          "ID": "e23bcdf6c613",
+          "MemPerc": "46.30%",
+          "MemUsage": "118.5MiB / 256MiB",
+          "Name": "geo-tracking-test-task-grafana-1",
+          "NetIO": "23.5MB / 159kB",
+          "PIDs": "22"
+        },
+        {
+          "BlockIO": "51.6MB / 0B",
+          "CPUPerc": "5.49%",
+          "Container": "geo-tracking-test-task-nats-1",
+          "ID": "52f0d045484f",
+          "MemPerc": "6.99%",
+          "MemUsage": "17.89MiB / 256MiB",
+          "Name": "geo-tracking-test-task-nats-1",
+          "NetIO": "1.73GB / 2.95GB",
+          "PIDs": "9"
+        },
+        {
+          "BlockIO": "198MB / 77.9MB",
+          "CPUPerc": "85.28%",
+          "Container": "geo-tracking-test-task-kafka-1",
+          "ID": "3bd667115a35",
+          "MemPerc": "41.49%",
+          "MemUsage": "637.2MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-kafka-1",
+          "NetIO": "306MB / 251MB",
+          "PIDs": "118"
+        },
+        {
+          "BlockIO": "4.46GB / 126MB",
+          "CPUPerc": "0.69%",
+          "Container": "geo-tracking-test-task-prometheus-1",
+          "ID": "86ef08f4075c",
+          "MemPerc": "23.21%",
+          "MemUsage": "178.2MiB / 768MiB",
+          "Name": "geo-tracking-test-task-prometheus-1",
+          "NetIO": "877MB / 18.9MB",
+          "PIDs": "12"
+        }
+      ]
+    },
+    {
+      "sampled_at": "2026-10-01T22:00:05.477265+00:00",
+      "metrics": {
+        "accepted_per_second": 20005.49090909091,
+        "committed_per_second": 20000.14709195572,
+        "consumer_lag": 3180.0,
+        "freshness_p95_seconds": 0.1994558843807815,
+        "batch_p95_seconds": 0.03790594946095449,
+        "api_loop_lag_p99_seconds": 0.008455580862381127,
+        "database_statement_seconds_per_second": 0.5148635343448758
+      },
+      "containers": [
+        {
+          "BlockIO": "49MB / 0B",
+          "CPUPerc": "23.82%",
+          "Container": "geo-tracking-test-task-processor-11",
+          "ID": "b2733450a14d",
+          "MemPerc": "21.96%",
+          "MemUsage": "84.31MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-11",
+          "NetIO": "1.97GB / 3.89GB",
+          "PIDs": "7"
+        },
+        {
+          "BlockIO": "58.8MB / 0B",
+          "CPUPerc": "25.25%",
+          "Container": "geo-tracking-test-task-processor-9",
+          "ID": "4331dd1a4b20",
+          "MemPerc": "22.30%",
+          "MemUsage": "85.64MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-9",
+          "NetIO": "1.96GB / 3.87GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "149MB / 0B",
+          "CPUPerc": "36.05%",
+          "Container": "geo-tracking-test-task-api-4",
+          "ID": "20789fd15595",
+          "MemPerc": "32.30%",
+          "MemUsage": "103.4MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-4",
+          "NetIO": "1.59GB / 1.82GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "134MB / 0B",
+          "CPUPerc": "35.47%",
+          "Container": "geo-tracking-test-task-api-1",
+          "ID": "ce531ea54198",
+          "MemPerc": "32.07%",
+          "MemUsage": "102.6MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-1",
+          "NetIO": "524MB / 575MB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "23.94%",
+          "Container": "geo-tracking-test-task-processor-10",
+          "ID": "72a2ef0c5d0c",
+          "MemPerc": "21.56%",
+          "MemUsage": "82.78MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-10",
+          "NetIO": "1.96GB / 3.86GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "84MB / 0B",
+          "CPUPerc": "36.02%",
+          "Container": "geo-tracking-test-task-api-2",
+          "ID": "e83f6947ec92",
+          "MemPerc": "33.45%",
+          "MemUsage": "107MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-2",
+          "NetIO": "1.59GB / 1.83GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "40.7MB / 0B",
+          "CPUPerc": "26.00%",
+          "Container": "geo-tracking-test-task-processor-7",
+          "ID": "a8d5f297bf87",
+          "MemPerc": "22.73%",
+          "MemUsage": "87.27MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-7",
+          "NetIO": "1.96GB / 3.88GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "65.7MB / 0B",
+          "CPUPerc": "35.39%",
+          "Container": "geo-tracking-test-task-api-6",
+          "ID": "ee7704abbaf2",
+          "MemPerc": "32.25%",
+          "MemUsage": "103.2MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-6",
+          "NetIO": "1.59GB / 1.82GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "89.8MB / 0B",
+          "CPUPerc": "26.07%",
+          "Container": "geo-tracking-test-task-processor-2",
+          "ID": "3da849e48e8d",
+          "MemPerc": "21.86%",
+          "MemUsage": "83.95MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-2",
+          "NetIO": "1.01GB / 2GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "46.4MB / 0B",
+          "CPUPerc": "25.86%",
+          "Container": "geo-tracking-test-task-processor-4",
+          "ID": "d808b18375fd",
+          "MemPerc": "22.41%",
+          "MemUsage": "86.07MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-4",
+          "NetIO": "1.95GB / 3.85GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "39.4MB / 0B",
+          "CPUPerc": "24.44%",
+          "Container": "geo-tracking-test-task-processor-6",
+          "ID": "da85321ae924",
+          "MemPerc": "23.07%",
+          "MemUsage": "88.6MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-6",
+          "NetIO": "1.95GB / 3.86GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "34.5MB / 0B",
+          "CPUPerc": "25.22%",
+          "Container": "geo-tracking-test-task-processor-8",
+          "ID": "021ac279f1ff",
+          "MemPerc": "22.31%",
+          "MemUsage": "85.66MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-8",
+          "NetIO": "1.95GB / 3.86GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "1.38GB / 8.33GB",
+          "CPUPerc": "85.43%",
+          "Container": "geo-tracking-test-task-db-1",
+          "ID": "89d793296282",
+          "MemPerc": "27.66%",
+          "MemUsage": "424.9MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-db-1",
+          "NetIO": "2.86GB / 4.15GB",
+          "PIDs": "43"
+        },
+        {
+          "BlockIO": "52.6MB / 0B",
+          "CPUPerc": "52.54%",
+          "Container": "geo-tracking-test-task-gateway-2",
+          "ID": "846e871e7f41",
+          "MemPerc": "16.51%",
+          "MemUsage": "52.82MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-2",
+          "NetIO": "22.4GB / 10.1GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "68.5MB / 0B",
+          "CPUPerc": "26.29%",
+          "Container": "geo-tracking-test-task-gateway-1",
+          "ID": "6c1c94714156",
+          "MemPerc": "15.97%",
+          "MemUsage": "51.12MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-1",
+          "NetIO": "3.52GB / 1.34GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "38.3MB / 0B",
+          "CPUPerc": "47.83%",
+          "Container": "geo-tracking-test-task-edge-1",
+          "ID": "4f9f5d01d4a5",
+          "MemPerc": "7.90%",
+          "MemUsage": "20.23MiB / 256MiB",
+          "Name": "geo-tracking-test-task-edge-1",
+          "NetIO": "4.94GB / 4.43GB",
+          "PIDs": "15"
+        },
+        {
+          "BlockIO": "680MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-postgres-exporter-1",
+          "ID": "6e9b0de440f0",
+          "MemPerc": "7.52%",
+          "MemUsage": "9.629MiB / 128MiB",
+          "Name": "geo-tracking-test-task-postgres-exporter-1",
+          "NetIO": "68.9MB / 33.8MB",
+          "PIDs": "14"
+        },
+        {
+          "BlockIO": "340MB / 0B",
+          "CPUPerc": "0.02%",
+          "Container": "geo-tracking-test-task-nats-exporter-1",
+          "ID": "df5d52cdf43e",
+          "MemPerc": "22.60%",
+          "MemUsage": "14.46MiB / 64MiB",
+          "Name": "geo-tracking-test-task-nats-exporter-1",
+          "NetIO": "12.5MB / 5.39MB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "638MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-kafka-exporter-1",
+          "ID": "df26caa92764",
+          "MemPerc": "24.68%",
+          "MemUsage": "31.59MiB / 128MiB",
+          "Name": "geo-tracking-test-task-kafka-exporter-1",
+          "NetIO": "2.39GB / 1.27GB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "9.35GB / 168MB",
+          "CPUPerc": "0.17%",
+          "Container": "geo-tracking-test-task-grafana-1",
+          "ID": "e23bcdf6c613",
+          "MemPerc": "35.85%",
+          "MemUsage": "91.78MiB / 256MiB",
+          "Name": "geo-tracking-test-task-grafana-1",
+          "NetIO": "23.5MB / 159kB",
+          "PIDs": "22"
+        },
+        {
+          "BlockIO": "56.7MB / 0B",
+          "CPUPerc": "7.29%",
+          "Container": "geo-tracking-test-task-nats-1",
+          "ID": "52f0d045484f",
+          "MemPerc": "5.18%",
+          "MemUsage": "13.27MiB / 256MiB",
+          "Name": "geo-tracking-test-task-nats-1",
+          "NetIO": "1.81GB / 3.07GB",
+          "PIDs": "9"
+        },
+        {
+          "BlockIO": "218MB / 78.3MB",
+          "CPUPerc": "117.65%",
+          "Container": "geo-tracking-test-task-kafka-1",
+          "ID": "3bd667115a35",
+          "MemPerc": "40.27%",
+          "MemUsage": "618.6MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-kafka-1",
+          "NetIO": "341MB / 290MB",
+          "PIDs": "100"
+        },
+        {
+          "BlockIO": "4.48GB / 126MB",
+          "CPUPerc": "0.41%",
+          "Container": "geo-tracking-test-task-prometheus-1",
+          "ID": "86ef08f4075c",
+          "MemPerc": "21.62%",
+          "MemUsage": "166MiB / 768MiB",
+          "Name": "geo-tracking-test-task-prometheus-1",
+          "NetIO": "878MB / 18.9MB",
+          "PIDs": "12"
+        }
+      ]
+    },
+    {
+      "sampled_at": "2026-10-01T22:00:18.616288+00:00",
+      "metrics": {
+        "accepted_per_second": 19999.836363636365,
+        "committed_per_second": 20026.0,
+        "consumer_lag": 1061.0,
+        "freshness_p95_seconds": 0.20851335343527877,
+        "batch_p95_seconds": 0.04077611301369861,
+        "api_loop_lag_p99_seconds": 0.010471428571428602,
+        "database_statement_seconds_per_second": 0.5167847069815552
+      },
+      "containers": [
+        {
+          "BlockIO": "49MB / 0B",
+          "CPUPerc": "24.42%",
+          "Container": "geo-tracking-test-task-processor-11",
+          "ID": "b2733450a14d",
+          "MemPerc": "21.69%",
+          "MemUsage": "83.27MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-11",
+          "NetIO": "1.98GB / 3.91GB",
+          "PIDs": "7"
+        },
+        {
+          "BlockIO": "58.8MB / 0B",
+          "CPUPerc": "25.11%",
+          "Container": "geo-tracking-test-task-processor-9",
+          "ID": "4331dd1a4b20",
+          "MemPerc": "22.29%",
+          "MemUsage": "85.6MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-9",
+          "NetIO": "1.97GB / 3.89GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "149MB / 0B",
+          "CPUPerc": "33.91%",
+          "Container": "geo-tracking-test-task-api-4",
+          "ID": "20789fd15595",
+          "MemPerc": "32.24%",
+          "MemUsage": "103.2MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-4",
+          "NetIO": "1.6GB / 1.83GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "141MB / 0B",
+          "CPUPerc": "34.14%",
+          "Container": "geo-tracking-test-task-api-1",
+          "ID": "ce531ea54198",
+          "MemPerc": "34.13%",
+          "MemUsage": "109.2MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-1",
+          "NetIO": "532MB / 584MB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "25.14%",
+          "Container": "geo-tracking-test-task-processor-10",
+          "ID": "72a2ef0c5d0c",
+          "MemPerc": "21.55%",
+          "MemUsage": "82.75MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-10",
+          "NetIO": "1.96GB / 3.88GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "84MB / 0B",
+          "CPUPerc": "33.24%",
+          "Container": "geo-tracking-test-task-api-2",
+          "ID": "e83f6947ec92",
+          "MemPerc": "33.43%",
+          "MemUsage": "107MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-2",
+          "NetIO": "1.6GB / 1.84GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "40.7MB / 0B",
+          "CPUPerc": "26.01%",
+          "Container": "geo-tracking-test-task-processor-7",
+          "ID": "a8d5f297bf87",
+          "MemPerc": "22.72%",
+          "MemUsage": "87.23MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-7",
+          "NetIO": "1.97GB / 3.89GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "65.7MB / 0B",
+          "CPUPerc": "33.46%",
+          "Container": "geo-tracking-test-task-api-6",
+          "ID": "ee7704abbaf2",
+          "MemPerc": "32.15%",
+          "MemUsage": "102.9MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-6",
+          "NetIO": "1.6GB / 1.83GB",
+          "PIDs": "11"
+        },
+        {
+          "BlockIO": "89.8MB / 0B",
+          "CPUPerc": "23.53%",
+          "Container": "geo-tracking-test-task-processor-2",
+          "ID": "3da849e48e8d",
+          "MemPerc": "21.81%",
+          "MemUsage": "83.75MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-2",
+          "NetIO": "1.02GB / 2.01GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "46.4MB / 0B",
+          "CPUPerc": "24.83%",
+          "Container": "geo-tracking-test-task-processor-4",
+          "ID": "d808b18375fd",
+          "MemPerc": "22.42%",
+          "MemUsage": "86.1MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-4",
+          "NetIO": "1.96GB / 3.86GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "39.4MB / 0B",
+          "CPUPerc": "17.41%",
+          "Container": "geo-tracking-test-task-processor-6",
+          "ID": "da85321ae924",
+          "MemPerc": "23.07%",
+          "MemUsage": "88.59MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-6",
+          "NetIO": "1.96GB / 3.87GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "34.5MB / 0B",
+          "CPUPerc": "24.61%",
+          "Container": "geo-tracking-test-task-processor-8",
+          "ID": "021ac279f1ff",
+          "MemPerc": "22.32%",
+          "MemUsage": "85.71MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-8",
+          "NetIO": "1.96GB / 3.88GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "1.38GB / 8.41GB",
+          "CPUPerc": "78.55%",
+          "Container": "geo-tracking-test-task-db-1",
+          "ID": "89d793296282",
+          "MemPerc": "27.67%",
+          "MemUsage": "425MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-db-1",
+          "NetIO": "2.89GB / 4.19GB",
+          "PIDs": "43"
+        },
+        {
+          "BlockIO": "52.6MB / 0B",
+          "CPUPerc": "49.91%",
+          "Container": "geo-tracking-test-task-gateway-2",
+          "ID": "846e871e7f41",
+          "MemPerc": "16.28%",
+          "MemUsage": "52.08MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-2",
+          "NetIO": "22.4GB / 10.1GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "68.5MB / 0B",
+          "CPUPerc": "23.94%",
+          "Container": "geo-tracking-test-task-gateway-1",
+          "ID": "6c1c94714156",
+          "MemPerc": "15.94%",
+          "MemUsage": "51.01MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-1",
+          "NetIO": "3.55GB / 1.36GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "38.3MB / 0B",
+          "CPUPerc": "46.72%",
+          "Container": "geo-tracking-test-task-edge-1",
+          "ID": "4f9f5d01d4a5",
+          "MemPerc": "7.90%",
+          "MemUsage": "20.23MiB / 256MiB",
+          "Name": "geo-tracking-test-task-edge-1",
+          "NetIO": "5.05GB / 4.53GB",
+          "PIDs": "15"
+        },
+        {
+          "BlockIO": "680MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-postgres-exporter-1",
+          "ID": "6e9b0de440f0",
+          "MemPerc": "8.15%",
+          "MemUsage": "10.43MiB / 128MiB",
+          "Name": "geo-tracking-test-task-postgres-exporter-1",
+          "NetIO": "69.1MB / 33.9MB",
+          "PIDs": "14"
+        },
+        {
+          "BlockIO": "340MB / 0B",
+          "CPUPerc": "0.08%",
+          "Container": "geo-tracking-test-task-nats-exporter-1",
+          "ID": "df5d52cdf43e",
+          "MemPerc": "22.72%",
+          "MemUsage": "14.54MiB / 64MiB",
+          "Name": "geo-tracking-test-task-nats-exporter-1",
+          "NetIO": "12.6MB / 5.4MB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "638MB / 0B",
+          "CPUPerc": "9.81%",
+          "Container": "geo-tracking-test-task-kafka-exporter-1",
+          "ID": "df26caa92764",
+          "MemPerc": "25.34%",
+          "MemUsage": "32.43MiB / 128MiB",
+          "Name": "geo-tracking-test-task-kafka-exporter-1",
+          "NetIO": "2.4GB / 1.28GB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "9.39GB / 168MB",
+          "CPUPerc": "0.12%",
+          "Container": "geo-tracking-test-task-grafana-1",
+          "ID": "e23bcdf6c613",
+          "MemPerc": "54.00%",
+          "MemUsage": "138.2MiB / 256MiB",
+          "Name": "geo-tracking-test-task-grafana-1",
+          "NetIO": "23.5MB / 159kB",
+          "PIDs": "22"
+        },
+        {
+          "BlockIO": "56.7MB / 0B",
+          "CPUPerc": "7.96%",
+          "Container": "geo-tracking-test-task-nats-1",
+          "ID": "52f0d045484f",
+          "MemPerc": "5.15%",
+          "MemUsage": "13.2MiB / 256MiB",
+          "Name": "geo-tracking-test-task-nats-1",
+          "NetIO": "1.89GB / 3.18GB",
+          "PIDs": "9"
+        },
+        {
+          "BlockIO": "220MB / 132MB",
+          "CPUPerc": "71.02%",
+          "Container": "geo-tracking-test-task-kafka-1",
+          "ID": "3bd667115a35",
+          "MemPerc": "45.40%",
+          "MemUsage": "697.4MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-kafka-1",
+          "NetIO": "376MB / 328MB",
+          "PIDs": "100"
+        },
+        {
+          "BlockIO": "4.48GB / 127MB",
+          "CPUPerc": "1.78%",
+          "Container": "geo-tracking-test-task-prometheus-1",
+          "ID": "86ef08f4075c",
+          "MemPerc": "21.62%",
+          "MemUsage": "166.1MiB / 768MiB",
+          "Name": "geo-tracking-test-task-prometheus-1",
+          "NetIO": "881MB / 19MB",
+          "PIDs": "12"
+        }
+      ]
+    },
+    {
+      "sampled_at": "2026-10-01T22:00:31.407463+00:00",
+      "metrics": {
+        "accepted_per_second": 19376.7832580771,
+        "committed_per_second": 18821.604875798665,
+        "consumer_lag": 0.0,
+        "freshness_p95_seconds": 0.2269385298393179,
+        "batch_p95_seconds": 0.04316470664686971,
+        "api_loop_lag_p99_seconds": 0.009649999669438915,
+        "database_statement_seconds_per_second": 0.49767310727287956
+      },
+      "containers": [
+        {
+          "BlockIO": "49MB / 0B",
+          "CPUPerc": "0.72%",
+          "Container": "geo-tracking-test-task-processor-11",
+          "ID": "b2733450a14d",
+          "MemPerc": "21.93%",
+          "MemUsage": "84.21MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-11",
+          "NetIO": "1.98GB / 3.91GB",
+          "PIDs": "7"
+        },
+        {
+          "BlockIO": "58.8MB / 0B",
+          "CPUPerc": "0.87%",
+          "Container": "geo-tracking-test-task-processor-9",
+          "ID": "4331dd1a4b20",
+          "MemPerc": "22.35%",
+          "MemUsage": "85.83MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-9",
+          "NetIO": "1.97GB / 3.89GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "149MB / 0B",
+          "CPUPerc": "3.43%",
+          "Container": "geo-tracking-test-task-api-4",
+          "ID": "20789fd15595",
+          "MemPerc": "32.30%",
+          "MemUsage": "103.4MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-4",
+          "NetIO": "1.6GB / 1.83GB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "141MB / 0B",
+          "CPUPerc": "1.67%",
+          "Container": "geo-tracking-test-task-api-1",
+          "ID": "ce531ea54198",
+          "MemPerc": "33.12%",
+          "MemUsage": "106MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-1",
+          "NetIO": "535MB / 587MB",
+          "PIDs": "12"
+        },
+        {
+          "BlockIO": "35.2MB / 0B",
+          "CPUPerc": "0.93%",
+          "Container": "geo-tracking-test-task-processor-10",
+          "ID": "72a2ef0c5d0c",
+          "MemPerc": "21.56%",
+          "MemUsage": "82.78MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-10",
+          "NetIO": "1.97GB / 3.88GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "84MB / 0B",
+          "CPUPerc": "4.38%",
+          "Container": "geo-tracking-test-task-api-2",
+          "ID": "e83f6947ec92",
+          "MemPerc": "33.60%",
+          "MemUsage": "107.5MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-2",
+          "NetIO": "1.6GB / 1.84GB",
+          "PIDs": "10"
+        },
+        {
+          "BlockIO": "40.7MB / 0B",
+          "CPUPerc": "0.97%",
+          "Container": "geo-tracking-test-task-processor-7",
+          "ID": "a8d5f297bf87",
+          "MemPerc": "22.87%",
+          "MemUsage": "87.8MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-7",
+          "NetIO": "1.97GB / 3.9GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "72.3MB / 0B",
+          "CPUPerc": "10.41%",
+          "Container": "geo-tracking-test-task-api-6",
+          "ID": "ee7704abbaf2",
+          "MemPerc": "34.07%",
+          "MemUsage": "109MiB / 320MiB",
+          "Name": "geo-tracking-test-task-api-6",
+          "NetIO": "1.61GB / 1.83GB",
+          "PIDs": "10"
+        },
+        {
+          "BlockIO": "89.8MB / 0B",
+          "CPUPerc": "0.70%",
+          "Container": "geo-tracking-test-task-processor-2",
+          "ID": "3da849e48e8d",
+          "MemPerc": "21.92%",
+          "MemUsage": "84.19MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-2",
+          "NetIO": "1.02GB / 2.02GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "46.4MB / 0B",
+          "CPUPerc": "0.80%",
+          "Container": "geo-tracking-test-task-processor-4",
+          "ID": "d808b18375fd",
+          "MemPerc": "22.50%",
+          "MemUsage": "86.4MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-4",
+          "NetIO": "1.96GB / 3.87GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "39.4MB / 0B",
+          "CPUPerc": "0.57%",
+          "Container": "geo-tracking-test-task-processor-6",
+          "ID": "da85321ae924",
+          "MemPerc": "23.07%",
+          "MemUsage": "88.57MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-6",
+          "NetIO": "1.96GB / 3.87GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "34.5MB / 0B",
+          "CPUPerc": "0.71%",
+          "Container": "geo-tracking-test-task-processor-8",
+          "ID": "021ac279f1ff",
+          "MemPerc": "22.38%",
+          "MemUsage": "85.96MiB / 384MiB",
+          "Name": "geo-tracking-test-task-processor-8",
+          "NetIO": "1.96GB / 3.88GB",
+          "PIDs": "20"
+        },
+        {
+          "BlockIO": "1.39GB / 8.43GB",
+          "CPUPerc": "2.06%",
+          "Container": "geo-tracking-test-task-db-1",
+          "ID": "89d793296282",
+          "MemPerc": "27.62%",
+          "MemUsage": "424.2MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-db-1",
+          "NetIO": "2.9GB / 4.2GB",
+          "PIDs": "43"
+        },
+        {
+          "BlockIO": "52.6MB / 0B",
+          "CPUPerc": "12.39%",
+          "Container": "geo-tracking-test-task-gateway-2",
+          "ID": "846e871e7f41",
+          "MemPerc": "16.28%",
+          "MemUsage": "52.09MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-2",
+          "NetIO": "22.5GB / 10.1GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "70.6MB / 0B",
+          "CPUPerc": "0.94%",
+          "Container": "geo-tracking-test-task-gateway-1",
+          "ID": "6c1c94714156",
+          "MemPerc": "16.57%",
+          "MemUsage": "53.04MiB / 320MiB",
+          "Name": "geo-tracking-test-task-gateway-1",
+          "NetIO": "3.56GB / 1.36GB",
+          "PIDs": "6"
+        },
+        {
+          "BlockIO": "38.4MB / 0B",
+          "CPUPerc": "0.44%",
+          "Container": "geo-tracking-test-task-edge-1",
+          "ID": "4f9f5d01d4a5",
+          "MemPerc": "8.00%",
+          "MemUsage": "20.48MiB / 256MiB",
+          "Name": "geo-tracking-test-task-edge-1",
+          "NetIO": "5.08GB / 4.56GB",
+          "PIDs": "15"
+        },
+        {
+          "BlockIO": "680MB / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "geo-tracking-test-task-postgres-exporter-1",
+          "ID": "6e9b0de440f0",
+          "MemPerc": "8.15%",
+          "MemUsage": "10.44MiB / 128MiB",
+          "Name": "geo-tracking-test-task-postgres-exporter-1",
+          "NetIO": "69.2MB / 33.9MB",
+          "PIDs": "14"
+        },
+        {
+          "BlockIO": "340MB / 0B",
+          "CPUPerc": "0.01%",
+          "Container": "geo-tracking-test-task-nats-exporter-1",
+          "ID": "df5d52cdf43e",
+          "MemPerc": "24.16%",
+          "MemUsage": "15.46MiB / 64MiB",
+          "Name": "geo-tracking-test-task-nats-exporter-1",
+          "NetIO": "12.6MB / 5.41MB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "638MB / 0B",
+          "CPUPerc": "0.46%",
+          "Container": "geo-tracking-test-task-kafka-exporter-1",
+          "ID": "df26caa92764",
+          "MemPerc": "24.43%",
+          "MemUsage": "31.27MiB / 128MiB",
+          "Name": "geo-tracking-test-task-kafka-exporter-1",
+          "NetIO": "2.4GB / 1.28GB",
+          "PIDs": "16"
+        },
+        {
+          "BlockIO": "9.4GB / 168MB",
+          "CPUPerc": "3.93%",
+          "Container": "geo-tracking-test-task-grafana-1",
+          "ID": "e23bcdf6c613",
+          "MemPerc": "56.37%",
+          "MemUsage": "144.3MiB / 256MiB",
+          "Name": "geo-tracking-test-task-grafana-1",
+          "NetIO": "23.5MB / 159kB",
+          "PIDs": "22"
+        },
+        {
+          "BlockIO": "56.7MB / 0B",
+          "CPUPerc": "1.36%",
+          "Container": "geo-tracking-test-task-nats-1",
+          "ID": "52f0d045484f",
+          "MemPerc": "5.27%",
+          "MemUsage": "13.48MiB / 256MiB",
+          "Name": "geo-tracking-test-task-nats-1",
+          "NetIO": "1.92GB / 3.22GB",
+          "PIDs": "9"
+        },
+        {
+          "BlockIO": "221MB / 132MB",
+          "CPUPerc": "2.87%",
+          "Container": "geo-tracking-test-task-kafka-1",
+          "ID": "3bd667115a35",
+          "MemPerc": "46.27%",
+          "MemUsage": "710.8MiB / 1.5GiB",
+          "Name": "geo-tracking-test-task-kafka-1",
+          "NetIO": "389MB / 345MB",
+          "PIDs": "101"
+        },
+        {
+          "BlockIO": "4.48GB / 127MB",
+          "CPUPerc": "0.14%",
+          "Container": "geo-tracking-test-task-prometheus-1",
+          "ID": "86ef08f4075c",
+          "MemPerc": "21.80%",
+          "MemUsage": "167.4MiB / 768MiB",
+          "Name": "geo-tracking-test-task-prometheus-1",
+          "NetIO": "882MB / 19MB",
+          "PIDs": "12"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "acceptance_passed": false,
+  "workload": {
+    "passed": true,
+    "checks": {
+      "exact_population": true,
+      "no_loss_or_overload": true,
+      "sustained_rate": true,
+      "scheduling_p99": true,
+      "scheduling_tail_fraction": true,
+      "scheduling_max": true
+    },
+    "late_fraction": 0.0,
+    "minimum_acked_rate": 19800.0
+  },
+  "pipeline": {
+    "passed": true,
+    "checks": {
+      "counters_never_reset": true,
+      "every_acked_report_committed": true,
+      "consumer_lag_drained": true,
+      "no_session_evicted": true,
+      "no_slow_consumer": true,
+      "no_failed_batches": true,
+      "database_holds_every_latest_report": true
+    },
+    "committed": 3600000.0,
+    "stale": 0.0,
+    "duplicate": 0.0,
+    "replayed": 0.0,
+    "stored_latest": {
+      "devices": 100000,
+      "timestamp_sum": "179089179008314062638"
+    }
+  },
+  "delivery_reconciled": false,
+  "delivery_latency": {
+    "positions": {
+      "count": 11542633,
+      "max_ms": 3292,
+      "p50_ms": 56,
+      "p95_ms": 143,
+      "p99_ms": 402
+    },
+    "inside_report": {
+      "count": 7194255,
+      "max_ms": 3295,
+      "p50_ms": 57,
+      "p95_ms": 145,
+      "p99_ms": 408
+    }
+  },
+  "sessions": [
+    {
+      "counts": {
+        "positions": 3598236,
+        "inside_report": 3598236
+      },
+      "checks": {
+        "positions": false,
+        "inside_report": false,
+        "not_closed": true
+      }
+    },
+    {
+      "counts": {
+        "positions": 3596019,
+        "inside_report": 3596019
+      },
+      "checks": {
+        "positions": false,
+        "inside_report": false,
+        "not_closed": true
+      }
+    },
+    {
+      "counts": {
+        "positions": 3596019
+      },
+      "checks": {
+        "positions": false,
+        "inside_report": true,
+        "not_closed": true
+      }
+    },
+    {
+      "counts": {
+        "positions": 752359
+      },
+      "checks": {
+        "positions": false,
+        "inside_report": true,
+        "not_closed": true
+      }
+    }
+  ]
+}
