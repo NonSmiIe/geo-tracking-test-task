@@ -1,126 +1,163 @@
-# Fleet tracking and private geozone alerts
+# Fleetline: real-time geo-tracking and private geozone alerts
 
-A real-time fleet service built with FastAPI, asynchronous SQLAlchemy and PostgreSQL/PostGIS. It receives moving-device reports, streams every accepted report to dashboards, and sends inside-zone alerts to every active session of the zone owner.
+Fleetline is a FastAPI, async SQLAlchemy and PostgreSQL/PostGIS service that ingests positions from a moving fleet. It streams them to dashboards and pushes an alert to every open session of a user whenever one of that user's devices reports from inside one of their circular geozones. Every component that carries load scales horizontally. The measured envelope on one laptop is 100,000 devices reporting every five seconds (20,000 reports/s), reconciled report by report; see [Measured results](#measured-results).
 
-The map dashboard includes fleet search, device inspection, follow mode, private circular zones, live activity, occupancy insights, a responsive mobile layout and a dark theme.
+Design notes, with the brief, the reasoning behind each decision and the measurements: **https://claude.ai/artifact/5qGpLJVYQAY62WckcMui21**
 
 ## Run
 
-Install Docker with Compose. From this repository:
+Install Docker with Compose, then from this repository:
 
 ```sh
 cp .env.example .env
 docker compose up --build -d --wait
 ```
 
-Open **http://127.0.0.1:8097**. API documentation is at **/docs**. The default database password is for local demonstration; configure it in `.env` before the first boot. PostgreSQL is private to the Compose network, and its named volume preserves zones and latest positions. The app runs as a non-root user with a read-only filesystem, no Linux capabilities and a 512 MiB memory limit. PostgreSQL has a 1 GiB limit; each container has a two-CPU budget.
+Open **http://127.0.0.1:8097**; API documentation is at **/docs**. Compose starts:
 
-The PostGIS image is built on official PostgreSQL with its packaged extension so both ARM64 and AMD64 work without emulation. Startup applies Alembic migrations before accepting traffic. Stop with `docker compose stop`; start existing containers with `docker compose start`.
+| Service | Role |
+| --- | --- |
+| `db` | PostgreSQL 17 + PostGIS 3, named volume |
+| `kafka` | Kafka 4.1 (KRaft, single broker), topic `reports` with 24 partitions |
+| `nats` | NATS 2.11 core, live event routing |
+| `migrate` | One-shot `alembic upgrade head` before anything serves traffic |
+| `api` | FastAPI on uvicorn, 4 worker processes: ingest, REST, dashboard WebSockets |
+| `processor` | Kafka consumer group (`PROCESSORS`, default 4 replicas): dedup, PostGIS matching, persistence, fanout |
 
-For development and the generator, install [uv](https://docs.astral.sh/uv/) and run `uv sync --frozen`. Python 3.12+ is used. `uv.lock` pins Python dependencies.
+Only the API port is published, and only on `127.0.0.1`. Application containers run as a non-root user with a read-only root filesystem, no Linux capabilities, `no-new-privileges`, and memory and CPU limits. Credentials come from `.env`. Stop with `docker compose stop`.
 
-## Try the flow
+For the generator, benchmark and tooling, install [uv](https://docs.astral.sh/uv/) and run `uv sync --frozen` (Python 3.12+).
 
-Open two browser tabs as `alice`, and another as `bob`. Create an Alice zone centred near `56.9496, 24.1052` with a 500 metre radius, then run:
+## Try it
+
+Open two tabs as `alice` and one as `bob` (the avatar switches the mock user). In one Alice tab, create a zone around `56.9496, 24.1052` with a 5 km radius, then run:
 
 ```sh
-uv run python generator.py --devices 10000 --interval 5 --duration 60
+uv run python generator.py --devices 100000 --duration 60
 ```
 
-Both Alice tabs receive alerts for inside reports. Bob sees the shared fleet and his own zones and alerts. Closing one Alice tab leaves her other session active.
+Both Alice tabs receive alerts for every report from inside her zone. Bob sees the same fleet but never Alice's zones or alerts. Closing one Alice tab leaves the other live. The **Запустить демо** panel starts a two-minute, six-vehicle demo around a depot zone that belongs to the current user.
 
-Zone creation, editing and deletion also notify all of the owner's sessions, so geofence controls stay coherent between tabs.
+`uv run python scripts/drive.py` verifies the same contract against a running stack without resetting any data.
 
-The reusable driver verifies this independently without resetting the database:
+## Architecture
 
-```sh
-uv run python scripts/drive.py
+```
+devices ──WS /ingest──┐
+        ──POST /locations┤  api workers ──produce(key=device_id)──▶ Kafka `reports` (24 partitions)
+                         │       ▲                                         │ consumer group
+dashboards ◀──WS /ws─────┘       │ NATS: fleet.pos.<quadkey>               ▼
+                                 │       fleet.alerts.<user>        processors ──▶ PostgreSQL/PostGIS
+                                 └───────fleet.zones.<user>  ◀──publish── (dedup, match, upsert)
 ```
 
-## API contracts
+**Ingestion is stateless and acknowledged by Kafka.** API workers validate each report and produce it to Kafka, keyed by `device_id`, with `acks=all` and an idempotent producer. A device WebSocket (`/ingest`) carries one JSON report per message and receives cumulative `{"type":"ack","count":n}` frames. A `{"type":"flush"}` message returns the final count once every in-flight report is durable. `POST /locations` and `POST /locations/batch` return `202` after the broker ack. Each producer has a bounded in-flight window. A full HTTP window answers `503` with `Retry-After`; a full socket window stops reading that socket, so TCP backpressure reaches the device. Nothing in the ingest path waits for the database.
+
+**One owner per device, without one process.** Keying by `device_id` puts every report of a device on one partition, and the consumer group gives each partition exactly one processor. That ownership removes the watermark race a shared processor pool would have, and Kafka moves partitions to the survivors when a processor dies. Each processor polls up to 2,000 records and, in one transaction:
+
+1. discards equal `(device_id, timestamp)` duplicates, first wins;
+2. reads the persisted watermark of each device and drops samples at or before it (stale);
+3. matches **every** remaining fresh sample against active zones in one set-based PostGIS query, so a device that passes through a zone inside one batch still alerts;
+4. upserts only each device's newest position, guarded by `WHERE reported_at < excluded.reported_at` so a zombie owner during a rebalance can never move a device backwards.
+
+After commit the processor publishes to NATS, flushes, and only then commits the Kafka offsets. On a database error it seeks back to the batch's first offsets and retries; nothing is acknowledged and lost. Delivery is at least once, and replays are idempotent because the watermarks discard already-committed samples.
+
+**Spatial matching stays in PostGIS.** Zone centres are `geography(Point,4326)`, so radii are metres on the spheroid. Points are always built longitude first. Each zone also has a generated `footprint` column, produced by the IMMUTABLE SQL function `zone_footprint(center, radius_m)`. It is a lon/lat box that conservatively contains the geodesic circle: the angular radius uses the smallest meridional radius of curvature plus a 1% margin; the longitude extent is `asin(sin θ / cos φ)`; the box becomes two boxes across the antimeridian and spans all longitudes when the circle reaches a pole. A partial GiST index on active footprints selects candidates with `ST_Intersects`, and exact `ST_DWithin(center, point::geography, radius_m)` decides. There are no Python distance calculations and no per-zone queries. A test asserts on real PostGIS that this path returns exactly what brute-force `ST_DWithin` returns, across random zones, poles, the antimeridian, boundary-projected points and radii from 1e-100 m to 1e100 m.
+
+**Fanout is routed by NATS subjects, not by scanning.** Positions are published per Web-Mercator tile as `fleet.pos.<d1>.<d2>…<d8>`, a zoom-8 quadkey with one digit per token. Because quadkeys nest, a coarser tile is a subject prefix, so `fleet.pos.1.2.>` covers everything beneath it. A dashboard sends its viewport; the gateway picks the finest level whose tile cover has at most 16 tiles and subscribes to those subjects. Subscriptions are reference-counted across all of a worker's connections, so NATS only delivers what some local viewer needs. Alerts go to `fleet.alerts.<hex(user)>` and zone changes to `fleet.zones.<hex(user)>`; every gateway holding a session of that user subscribes, which is how all of a user's sessions get every alert whichever worker accepted them. Processors serialize each frame once and gateways forward the bytes without decoding.
+
+**WebSocket state.** Each worker keeps a `connection_id → Connection` registry plus `subject → connections` routes. A connection has one bounded byte queue and exactly one writer task, with a send deadline. Fanout only enqueues, so a slow socket never blocks others. A socket that overflows its queue or misses the deadline is closed alone with an explicit reason, and its siblings keep streaming. The browser opens its socket, sends its viewport, waits for `subscribed`, and only then loads the `/devices/latest` snapshot for that box. Snapshot and stream merge by microsecond timestamp, so a slow snapshot never overwrites a fresher position.
+
+**Why Kafka and NATS, and not Redis.** The ingest log needs durable partitions with exclusive, automatically rebalanced ownership; Kafka consumer groups are exactly that, and on Redis Streams it would have to be hand-built. The live path needs interest-based routing to the gateways that hold a viewer, and NATS subject wildcards do it inside the broker; Kafka would make every gateway read and decode the whole stream.
+
+**Database use.** Every process has one async engine with a bounded pool and a fixed checkout timeout (API workers 5, processors 2), plus a statement timeout. Sessions are short-lived and never belong to a WebSocket. Pool exhaustion or a database fault on REST returns `503`, while ingest keeps accepting into Kafka.
+
+## Semantics
+
+- A sample is identified by `(device_id, timestamp)`. Timestamps must carry a time zone and are normalized to UTC with microsecond precision. Device clocks are trusted.
+- Every fresh sample inside an active zone produces an alert for that zone, including repeated reports from a device already inside.
+- An HTTP `202` or a socket ack means the report is durable in Kafka; it says nothing about browser delivery. Live events are ephemeral. A crash between a processor's commit and its publish loses those live events, since the replay finds the samples stale; reconnecting restores the latest map, not missed alerts.
+- Zone edits take effect from the next processed batch. An alert carries the `zone_version` it was evaluated against.
+- Devices are a shared demo fleet; zones, occupancy and alerts are private to their owner. REST identifies the user with `X-User-ID`, the dashboard socket with `?user_id=`, which the task explicitly permits as mock identity. Ingestion is device traffic and carries no user.
+
+## API
 
 | Interface | Contract |
 | --- | --- |
-| `POST /locations` | One `{device_id,latitude,longitude,timestamp}` report |
-| `POST /locations/batch` | Array of 1–200 reports, capped by the configured processing batch size |
-| `GET/POST /geozones` | List or create this user's zones |
-| `GET/PATCH/DELETE /geozones/{id}` | Owner-scoped read, edit or deletion; another user's ID returns 404 |
-| `GET /devices/latest` | Shared fleet snapshot with keyset pagination |
-| `GET /insights` | Fleet freshness and this user's current zone occupancy |
-| `WS /ws?user_id=alice` | Ready event, then location and private alert frames |
-| `/health/live`, `/health/ready` | Process liveness and processor/database readiness |
-| `/metrics` | Bounded-window processing/loop-lag distributions and pipeline counters |
+| `WS /ingest` | Device stream: one report per message, cumulative `ack` frames, `flush` for a final count |
+| `POST /locations` | One `{device_id, latitude, longitude, timestamp}` → `202 {"accepted": 1}` |
+| `POST /locations/batch` | 1–200 reports → `202 {"accepted": n}` |
+| `GET/POST /geozones` | List (keyset pagination) or create this user's zones; quota per user |
+| `GET/PATCH/DELETE /geozones/{id}` | Owner-scoped; another user's zone is a 404 |
+| `GET /devices/latest` | Fleet snapshot; optional `south,west,north,east` box (antimeridian-aware), keyset pagination |
+| `GET /insights` | Fleet freshness and live occupancy of this user's zones |
+| `WS /ws?user_id=` | `ready` → client `viewport` → `subscribed`, then `positions`, `inside_report`, `zones_changed` |
+| `GET/POST /demo`, `/demo/start`, `/demo/stop` | Guided demo for the current user, shared across workers |
+| `/health/live`, `/health/ready` | Liveness; readiness checks NATS, the Kafka broker and PostgreSQL |
+| `/metrics` | Counters and distributions from every API worker and processor, gathered over NATS |
 
-REST user identification uses `X-User-ID`; the WebSocket uses its query parameter. This is deliberately mock identity, as permitted by the assignment. Ingestion represents device traffic and does not use dashboard identity. All demo users see the same fleet; geozones, occupancy and alerts are owner-private.
-
-Zones contain `name`, `latitude`, `longitude`, positive `radius_m` and `active`. Responses include `id` and an incrementing `version`. Snapshot and zone lists return `{items,next_cursor}`; use `after` to load the next page. Zone updates require both latitude and longitude when moving the centre.
-
-Reports require a timezone-aware timestamp, normalized to UTC. `(device_id,timestamp)` identifies a sample. Equal-key reports within one batch are first-wins duplicates; reports at or before a persisted device watermark are stale. HTTP 200 returns a `statuses` array in request order: `accepted`, `duplicate` or `stale`. Device clocks must be consistent. Every distinct fresh report produces an alert for every matching active zone, even when the device was already inside.
-
-Owner sessions also receive `{"type":"zones_changed"}` after a committed zone mutation; refresh private zone data on that event.
-
-Example WebSocket frames:
+Frames:
 
 ```json
-{"type":"ready","session_id":"..."}
-{"type":"locations","items":[{"device_id":"truck-1","latitude":56.9496,"longitude":24.1052,"timestamp":"2026-10-01T10:00:00.000100Z"}]}
-{"type":"inside_report","items":[{"device_id":"truck-1","latitude":56.9496,"longitude":24.1052,"timestamp":"2026-10-01T10:00:00.000100Z","zone_id":"...","zone_version":1}]}
+{"type":"positions","items":[["truck-1",56.9496,24.1052,1790866800000100]]}
+{"type":"inside_report","items":[{"device_id":"truck-1","latitude":56.9496,"longitude":24.1052,"timestamp":1790866800000100,"zone_id":"…","zone_version":1}]}
+{"type":"zones_changed"}
 ```
 
-## Architecture and resource bounds
+## Resource bounds
 
-HTTP admission → bounded ingress → one asynchronous microbatch processor → PostGIS matching and latest-state transaction → commit → per-user fanout → independent WebSocket writers.
-
-The processor collects up to 200 reports over 25 ms. It reads previous watermarks, preserves every distinct fresh report for spatial evaluation, then persists only each device's newest position. An inside-then-outside movement within one batch still generates its inside alert. The processing transaction uses repeatable-read isolation so candidate radii and exact zone data agree.
-
-Geozones use `geography(Point,4326)`, making radii metres rather than longitude/latitude degrees. Points are constructed longitude first. Matching runs in PostgreSQL using exact `ST_DWithin`; there are no Python distance loops or per-zone database requests.
-
-Different zone radii are grouped into generated power-of-two radius buckets. A partial multicolumn GiST index on `(radius_bucket,center)` restricts candidates by bucket and distance, followed by each zone's exact radius. A separate partial bucket index identifies the active buckets. The highest bucket's 33,554,432 metre bound exceeds every WGS84 surface distance; larger valid zone radii retain their exact semantics. This replaces the global maximum-radius approach, whose populated-data spike degraded sharply when one global zone was added. Latest device positions also have GiST indexing for private zone occupancy queries.
-
-The SQLAlchemy pool has five connections and no overflow. At most four CRUD/insight sessions compete for it, leaving processing capacity. Sessions are short-lived and never belong to a WebSocket. Query timeouts, request body size, HTTP concurrency, report backlog, total matches, serialized output and per-socket backlog all have explicit limits.
-
-| Default bound | Value |
+| Bound | Default |
 | --- | --- |
-| Admitted HTTP requests | 512 |
-| Request body | 256 KiB |
-| Total retained HTTP bodies | 16 MiB |
-| Pending reports, including processing | 4,096 |
-| Batch | 200 reports / 25 ms |
-| Database statement | 2 seconds |
-| Matches per batch | 4,000 |
-| Total serialized batch output | 1 MiB |
-| Dashboard connections, including handshakes | 128 |
-| Per-connection backlog | 2 MiB / 128 frames |
-| Frame size | 64 KiB |
-| Socket send deadline | 2 seconds |
+| HTTP request body | 256 KiB |
+| HTTP batch | 200 reports |
+| In-flight produces per API worker | 8,192 |
+| In-flight produces per device socket | 1,024 |
+| Processor poll | 2,000 records / 50 ms |
+| Database pool | 5 per API worker, 2 per processor, no overflow, 1 s checkout |
+| Statement timeout | 2 s |
+| Zones per user | 1,000 |
+| Dashboard sessions per worker | 128 |
+| Per-session queue / send deadline | 8 MiB / 2 s |
+| Viewport subscriptions | 16 tiles per session |
+| Alert frame | 1,000 items |
 
-Resource settings use the `GEO_` environment prefix and are defined in `geo_tracking/settings.py`. Empty socket queues must fit a complete maximum batch burst. Ingress or output overload returns 503 with `Retry-After`. Output budget violations roll back the whole batch; alert matches are never silently truncated. Slow/full sockets close individually with an overload reason, while healthy sessions continue.
+All are `GEO_`-prefixed settings in `geo_tracking/settings.py`.
 
-Frames are serialized once per shared fleet batch or private owner burst. Fanout snapshots recipient connections and enqueues without awaiting network sends. Each connection has exactly one writer. The browser opens its socket before fetching snapshots and merges positions with microsecond precision; its canvas rendering and bounded fleet/activity lists avoid per-device DOM growth.
+## Load generator
 
-Run **one application process**. The entry point fixes one Uvicorn worker, and connection state is local. Extra independent workers require shared event routing and coordinated processor ownership; merely increasing `workers` is unsupported. No broker is needed for this deployment. The benchmark defines its measured capacity envelope rather than claiming unlimited horizontal scale.
+`generator.py` simulates N devices across a configurable region (150 km radius around Riga by default). Every device has a heading and speed that drift each tick, which gives realistic tracks rather than jitter. Devices are sharded across processes; each process keeps a monotonic, open-loop schedule with random phases, so a slow server never lowers the offered rate. Reports go over multiplexed `/ingest` sockets by default (`--transport http` uses one `POST /locations` per report, `--batch-size` the batch endpoint). The generator counts scheduled, sent, acknowledged, dropped and late reports and a 64-bit identity checksum of everything sent.
 
-## Notification semantics
-
-HTTP 200 acknowledges committed latest state and enqueue attempts to the recipient snapshot, excluding sockets explicitly closed for overload. It does not acknowledge browser delivery. Events are live and ephemeral. A crash between commit and fanout can lose notifications; reconnect reconstructs latest map state without replaying missed alerts. A disconnected request may still commit, making a retry stale.
-
-Zone edits take effect at the processing transaction's snapshot. An already evaluated alert can arrive after a later edit or deletion; its zone version identifies the evaluated definition. The service stores latest positions, not an unbounded location history.
+```sh
+uv run python generator.py --devices 100000 --interval 5 --duration 900
+```
 
 ## Tests and measurements
 
 ```sh
 docker compose --profile test run --build --no-deps --rm tests
-uv run ruff check
-uv run ruff format --check
-uv run python scripts/benchmark.py --duration 900 --docker-stats --output evidence/baseline.json
+uv run ruff check && uv run ruff format --check
+uv run python scripts/benchmark.py --devices 100000 --duration 900
 ```
 
-Tests run against real PostGIS in the separate `geo_test` database. They cover metres, boundary tolerance, high latitude, the antimeridian, variable radii, private CRUD and alerts, multiple sessions, duplicate/stale reports, intermediate zone crossings, overload rollback, stalled writers, restart watermarks and processor failure.
+The tests run against real PostGIS, Kafka and NATS; each test gets its own topic, consumer group and subject prefix. They cover metre-correct containment and boundaries, high latitudes, poles and the antimeridian, footprint-versus-exact equality, coordinate order, paused and deleted zones, owner scoping, the zone quota, duplicates, stale samples and in-batch zone crossings. They also cover dense overlap (60 zones over the same devices, no rejected report), private delivery to every owner session, viewport routing and retargeting, device-socket acknowledgements, replay after a database failure, watermarks surviving a processor restart, slow-socket eviction and the guided demo.
 
-The generator maintains 10,000 moving device states with stable IDs, realistic random drift, randomized reporting phases and a monotonic schedule. Its HTTP connector and outstanding queue are bounded. It records scheduled, attempted, accepted, rejected, dropped, retried and late reports; it does not silently reduce offered load when the server slows. `--synchronized` creates a burst, `--interval 2` offers 5,000 reports/s, and `--batch-size 100` exercises the bulk endpoint separately from the required single-report path.
+The benchmark observes four dashboard sessions, each in its own process: two for the owner of a zone covering the whole fleet, one for another user with a world view, and one for that user with a small probe viewport. It reconciles every position and alert against the generator by count and identity checksum, checks that processors committed exactly what was acknowledged and that consumer lag drained, and records latency from the scheduled timestamp and container resources. The criteria were declared before the run in [acceptance policy v3](evidence/acceptance-policy-v3.md).
 
-The benchmark creates 100 private test zones, three sessions across two users, and a coverage zone containing the moving fixture. It reconciles each healthy session's location counts and report-identity checksums; both owner sessions must match the alert stream and the other user's must be empty. Workload success, delivery reconciliation, latency and resource evidence are reported separately. Ten thousand devices at five-second intervals means 2,000 reports/s, not 10,000 producer connections.
+## Measured results
 
-The [declared acceptance policy](evidence/acceptance-policy.md) requires exact population, zero loss, at least 99% of the offered rate, bounded scheduling jitter, delivery p95 below one second and stable container memory. Reports over 100 ms late remain visible diagnostics rather than an unrealistic zero-jitter timing requirement.
+Apple M4 Pro, Docker with 14 CPUs and 8 GB shared by the stack, the generator and unrelated containers. Every run uses 100 zones and four sessions; latency is measured from the scheduled report time.
 
-See [verification evidence](evidence/verification.md) for measured hardware, test results and limits. The populated spatial-plan probe is `scripts/explain.py`; it inserts its fixture inside a transaction and rolls it back. The reusable [drive-fleet skill](.agents/skills/drive-fleet/SKILL.md) preserves the local verification workflow.
+| Devices · duration | Reports/s | Acknowledged | Delivery p50 / p95 / p99 | API CPU | Processors | Verdict |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| 25,000 · 300 s | 4,999 | 1,500,000 / 1,500,000 | 28 / 65 / 135 ms | 156% | 4 × 19% | [passed](evidence/scaling-25k.json) |
+| 50,000 · 300 s | 9,996 | 3,000,000 / 3,000,000 | 29 / 74 / 219 ms | 200% | 4 × 20% | [passed](evidence/scaling-50k.json) |
+| 100,000 · 300 s | | | | | | running |
+| 100,000 · 900 s | | | | | | queued |
+
+In every passed run all four sessions reconciled exactly, including the probe viewport, which received precisely the positions in its subscribed tiles. The earlier single-process design's 10,000-device runs remain in `evidence/` under [policy v2](evidence/acceptance-policy.md).
+
+## Limits
+
+- One Kafka broker, one PostgreSQL and one NATS server: the Compose file demonstrates scale-out of the stateless tiers and processors, not broker or database replication.
+- Dashboard positions are live tiles plus a snapshot. Alerts are not replayed after a disconnect, and there is no movement history.
+- Identity is mock identity, as the assignment allows.
