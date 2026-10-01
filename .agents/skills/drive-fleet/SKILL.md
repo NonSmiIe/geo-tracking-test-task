@@ -25,6 +25,10 @@ Run from the repository root (the directory with `docker-compose.yml`). The app 
 - Never rebuild or restart the stack while a benchmark runs, and never run two benchmarks at once.
 - **Is the generator the limit?** `uv run python scripts/ack_sink.py` in one shell, then `uv run python generator.py --url http://127.0.0.1:8099 --devices N --duration 60 --processes 8`. If the sink run cannot sustain the rate, the generator is the bottleneck, not the service. 400k devices (80k/s) is known good.
 
+## Failure campaign
+
+`.agents/skills/drive-fleet/scripts/fault-campaign.sh` runs eight 100k × 180 s scenarios: restarts of NATS, Kafka, PostgreSQL and the edge; a processor kill and a processor pause (a zombie); an api kill and a gateway kill. Each fault fires at 60 s, and a recovery at 90 s where one is needed. Container names come from `docker compose ps`; replicas are not numbered 1..N after scaling, so check the targets exist before a run. It takes about 45 min, so run it in the background with a long timeout. Fault runs are judged by `evidence/acceptance-policy-fault-v1.md`: durability from PostgreSQL rows, not counters.
+
 ## Reading a benchmark
 
 The process exits 1 unless `acceptance_passed`. When it fails, read in this order:
