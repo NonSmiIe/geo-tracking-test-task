@@ -1,0 +1,9 @@
+ calls | total_ms | mean_ms |                                   q                                    
+-------+----------+---------+------------------------------------------------------------------------
+ 15495 |  2215991 |  143.01 | INSERT INTO device_latest AS device (device_id, position, reported_at)
+ 15495 |   732778 |   47.29 | WITH samples AS MATERIALIZED ( SELECT ordinality - 1 AS report_index, 
+ 15495 |    28464 |    1.84 | INSERT INTO consumer_progress AS progress (topic, partition, persisted
+ 15495 |    19985 |    1.29 | SELECT persisted FROM consumer_progress WHERE topic = $1 AND partition
+   400 |     2647 |    6.62 | SELECT pg_database_size($1)
+(5 rows)
+
