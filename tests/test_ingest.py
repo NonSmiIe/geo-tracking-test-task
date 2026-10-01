@@ -5,7 +5,7 @@ import pytest
 from aiokafka.partitioner import DefaultPartitioner
 
 from geo_tracking.bus import ProduceFailed, Producer, ensure_topic
-from geo_tracking.ingest import Acknowledgements, Ingest, Overloaded, Window
+from geo_tracking.ingest import Acknowledgements, Ingest, Overloaded, TokenBucket, Window
 from geo_tracking.schemas import REPORT
 from geo_tracking.settings import Settings
 from tests.helpers import report
@@ -146,3 +146,11 @@ async def test_librdkafka_partitions_every_key_like_the_java_default(settings: S
     java = DefaultPartitioner()
     partitions = list(range(24))
     assert placed == {key: java(key, partitions, partitions) for key in keys}
+
+
+async def test_a_socket_over_its_rate_is_slowed_not_refused() -> None:
+    bucket = TokenBucket(rate=1000, burst=200)
+    started = asyncio.get_running_loop().time()
+    for _ in range(4):
+        await bucket.take(100)
+    assert asyncio.get_running_loop().time() - started >= 0.18

@@ -2,6 +2,7 @@ import asyncio
 from collections import deque
 from collections.abc import Sequence
 from functools import partial
+from time import monotonic
 
 import msgspec
 import orjson
@@ -49,6 +50,23 @@ class Acknowledgements:
     def fail(self) -> None:
         self.failed = True
         self.idle.set()
+
+
+class TokenBucket:
+    def __init__(self, rate: float, burst: float) -> None:
+        self.rate, self.burst = rate, burst
+        self.tokens = burst
+        self.stamp = monotonic()
+
+    async def take(self, count: int) -> None:
+        while True:
+            now = monotonic()
+            self.tokens = min(self.burst, self.tokens + (now - self.stamp) * self.rate)
+            self.stamp = now
+            if self.tokens >= count:
+                self.tokens -= count
+                return
+            await asyncio.sleep((count - self.tokens) / self.rate)
 
 
 class Window:
@@ -130,6 +148,7 @@ class Ingest:
     async def stream(self, socket: WebSocket) -> None:
         await socket.accept()
         own = Window(self.settings.ingest_window)
+        bucket = TokenBucket(self.settings.socket_reports_per_second, self.settings.socket_burst)
         acks = Acknowledgements()
         frames = frame_decoder(self.settings.batch_reports)
 
@@ -169,6 +188,7 @@ class Ingest:
                     if not acks.failed:
                         await acknowledge()
                     continue
+                await bucket.take(len(frame))
                 await own.acquire(len(frame))
                 await self.admit(len(frame))
                 for index, report in enumerate(frame):

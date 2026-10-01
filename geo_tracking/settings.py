@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     produce_window: int = Field(default=8192, ge=1)
     produce_linger_ms: int = Field(default=20, ge=0)
     ingest_window: int = Field(default=1024, ge=1)
+    socket_reports_per_second: float = Field(default=2000, gt=0)
+    socket_burst: int = Field(default=4000, ge=200)
     admission_timeout_seconds: float = Field(default=1, gt=0)
     ack_interval_seconds: float = Field(default=0.2, gt=0)
 
