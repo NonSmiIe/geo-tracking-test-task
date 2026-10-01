@@ -88,6 +88,7 @@ def observe(url: str, user: str, viewport: dict, prefix: str, interval: float, r
         seen: dict[str, dict[str, tuple[int, int]]] = {"positions": {}, "inside_report": {}}
         latency = {"positions": Histogram(), "inside_report": Histogram()}
         closures: list[float] = []
+        resyncs: list[float] = []
         socket = await subscribe()
         ready.set()
         started = last = time.monotonic()
@@ -114,6 +115,10 @@ def observe(url: str, user: str, viewport: dict, prefix: str, interval: float, r
             last = time.monotonic()
             message = orjson.loads(data)
             kind = message["type"]
+            if kind == "resync":
+                resyncs.append(round(time.monotonic() - started, 2))
+                since_closure.clear()
+                continue
             if kind not in latency:
                 continue
             now = time.time() * 1_000_000
@@ -142,6 +147,7 @@ def observe(url: str, user: str, viewport: dict, prefix: str, interval: float, r
             "counts": dict(counts),
             "duplicates": dict(duplicates),
             "closures_at_seconds": closures,
+            "resyncs_at_seconds": resyncs,
             "received_after_last_closure": dict(since_closure),
             "checksums": {key: str(value) for key, value in checksums.items()},
             "latency": {key: value.summary() for key, value in latency.items()},

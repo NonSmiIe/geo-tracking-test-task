@@ -17,6 +17,7 @@ from geo_tracking.settings import Settings
 from geo_tracking.tiles import viewport_subjects
 
 SUBSCRIBED = b'{"type":"subscribed"}'
+RESYNC = b'{"type":"resync"}'
 
 
 class Connection:
@@ -71,6 +72,10 @@ class Gateway:
         self.lock = asyncio.Lock()
         CONNECTIONS.set_function(lambda: len(self.connections))
         SUBSCRIPTIONS.set_function(lambda: len(self.subscriptions))
+
+    async def resync(self) -> None:
+        for connection in tuple(self.connections.values()):
+            connection.enqueue(RESYNC)
 
     def deliver(self, subject: str, data: bytes) -> None:
         for connection in tuple(self.routes.get(subject, ())):

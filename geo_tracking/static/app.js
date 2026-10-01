@@ -399,6 +399,10 @@ function connect(who, version) {
       ws.send(JSON.stringify({ type: 'viewport', ...viewport() }));
       try { await loadZones(version, who, ws); } catch (cause) { if (connectionCurrent(ws, version, generation)) error(cause.message); }
     } else if (message.type === 'subscribed') loadSnapshot(who, version, ws, generation);
+    else if (message.type === 'resync') {
+      loadSnapshot(who, version, ws, generation);
+      try { await loadZones(version, who, ws); } catch (cause) { if (connectionCurrent(ws, version, generation)) error(cause.message); }
+    }
     else if (message.type === 'positions') { received += message.items.length; message.items.forEach((item) => queuePosition(positionItem(item))); }
     else if (message.type === 'inside_report') receiveAlerts(message.items);
     else if (message.type === 'zones_changed') {

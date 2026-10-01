@@ -1,6 +1,6 @@
 import asyncio
 
-from geo_tracking.gateway import Connection, Gateway
+from geo_tracking.gateway import RESYNC, Connection, Gateway
 from geo_tracking.metrics import GATEWAY
 from geo_tracking.settings import Settings
 
@@ -56,3 +56,12 @@ async def test_backlog_overflow_evicts_only_the_full_connection() -> None:
     assert full.reason == "backlog_overflow" and list(full.queue) == [b"x" * 1000]
     assert healthy.reason is None and list(healthy.queue) == [b"y" * 100]
     assert GATEWAY.get_sample_value("fleet_gateway_evictions_total", labels) == before + 1
+
+
+async def test_resync_reaches_every_open_dashboard() -> None:
+    settings = Settings()
+    hub = gateway(settings)
+    first, second = Connection("alice", Socket(), settings), Connection("bob", Socket(), settings)
+    hub.connections = {"a": first, "b": second}
+    await hub.resync()
+    assert list(first.queue) == [RESYNC] and list(second.queue) == [RESYNC]

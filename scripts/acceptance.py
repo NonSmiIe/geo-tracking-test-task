@@ -2,7 +2,7 @@ import re
 from statistics import median
 
 POLICY = "operational-v4"
-FAULT_POLICY = "fault-v1"
+FAULT_POLICY = "fault-v2"
 
 
 def assess_workload(generated: dict) -> dict:
@@ -91,7 +91,7 @@ def assess_resources(samples: list[dict]) -> dict:
 def assess_fault_run(workload: dict, pipeline: dict, delivery: list[dict]) -> dict:
     sessions = {}
     for session in delivery:
-        if session["closures_at_seconds"]:
+        if session["closures_at_seconds"] or session.get("resyncs_at_seconds"):
             sessions[str(session["session"])] = bool(session["received_after_last_closure"])
         else:
             sessions[str(session["session"])] = all(

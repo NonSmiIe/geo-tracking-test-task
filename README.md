@@ -93,7 +93,7 @@ After commit the processor publishes to NATS, flushes, and only then commits the
 | `GET/PATCH/DELETE /geozones/{id}` | Owner-scoped; another user's zone is a 404 |
 | `GET /devices/latest` | Fleet snapshot; optional `south,west,north,east` box (antimeridian-aware), keyset pagination |
 | `GET /insights` | Fleet freshness and live occupancy of this user's zones |
-| `WS /ws?user_id=` | `ready` → client `viewport` → `subscribed`, then `positions`, `inside_report`, `zones_changed` |
+| `WS /ws?user_id=` | `ready` → client `viewport` → `subscribed`, then `positions`, `inside_report`, `zones_changed`, and `resync` after the gateway's NATS connection recovers (live events published meanwhile are gone; the client reloads its snapshot) |
 | `GET/POST /demo`, `/demo/start`, `/demo/stop` | Guided demo for the current user; its state lives in PostgreSQL, so any replica can answer |
 | `/health/live` | The only health signal, used by compose and the edge. There is no readiness that depends on Kafka, PostgreSQL or NATS. A dependency outage is answered per request (`503`, or a socket close) and raised by alerts. Taking replicas out of rotation for it only turns a partial outage into a total one: at 300k devices a Kafka-probing readiness check timed out on every saturated replica, and the edge had no api server left. Processors serve `/health/live` on port 9100 and report `stalled` once Kafka has not been polled for the publish deadline plus 10 s |
 | `/metrics` | Prometheus exposition, per process: api and gateway on their port, processors on 9100. Not routed by the edge; Prometheus scrapes each replica |

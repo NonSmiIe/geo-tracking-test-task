@@ -17,7 +17,10 @@ def create_gateway_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        nats = await connect_nats(settings)
+        async def reconnected() -> None:
+            await app.state.gateway.resync()
+
+        nats = await connect_nats(settings, reconnected)
         app.state.gateway = Gateway(settings, nats)
         monitor = asyncio.create_task(monitor_loop("gateway"))
         try:

@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Awaitable, Callable
 
 import confluent_kafka
 import nats
@@ -27,12 +28,15 @@ async def counted(error: Exception) -> None:
         SLOW_CONSUMERS.inc()
 
 
-async def connect_nats(settings: Settings) -> Client:
+async def connect_nats(
+    settings: Settings, reconnected: Callable[[], Awaitable[None]] | None = None
+) -> Client:
     return await nats.connect(
         servers=settings.nats_servers.split(","),
         max_reconnect_attempts=-1,
         reconnect_time_wait=0.5,
         error_cb=counted,
+        reconnected_cb=reconnected,
     )
 
 
