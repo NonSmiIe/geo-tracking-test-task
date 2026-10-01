@@ -18,8 +18,16 @@ const zoneRenderer = L.canvas();
 let draftCircle;
 
 function timestampKey(value) {
+  if (typeof value === 'number') return BigInt(value);
   const fraction = /\.(\d+)/.exec(value)?.[1] || '';
   return BigInt(Date.parse(value)) * 1000n + BigInt(fraction.padEnd(6, '0').slice(3, 6) || '0');
+}
+const isoTime = (value) => typeof value === 'number' ? new Date(Math.floor(value / 1000)).toISOString() : value;
+function viewport() {
+  const bounds = map.getBounds(), wrap = (value) => ((value + 180) % 360 + 360) % 360 - 180;
+  const south = Math.max(-90, bounds.getSouth()), north = Math.min(90, bounds.getNorth());
+  if (bounds.getEast() - bounds.getWest() >= 360) return { south, west: -180, north, east: 180 };
+  return { south, west: wrap(bounds.getWest()), north, east: wrap(bounds.getEast()) };
 }
 function error(message) {
   $('error-message').textContent = message;
@@ -113,8 +121,9 @@ function queuePosition(item) {
   if (demoPrefix && !item.device_id.startsWith(demoPrefix)) return;
   const key = timestampKey(item.timestamp), previous = pendingPositions.get(item.device_id) || positions.get(item.device_id);
   if (previous && previous.key >= key) return;
-  pendingPositions.set(item.device_id, { ...item, key });
+  pendingPositions.set(item.device_id, { ...item, timestamp: isoTime(item.timestamp), key });
 }
+const positionItem = ([device_id, latitude, longitude, timestamp]) => ({ device_id, latitude, longitude, timestamp });
 function flushPositions() {
   if (!pendingPositions.size) return;
   for (const [id, item] of pendingPositions) {
@@ -216,6 +225,7 @@ function switchView(view) {
 }
 document.querySelectorAll('[data-view]').forEach((button) => { button.onclick = () => switchView(button.dataset.view); });
 function receiveAlerts(items) {
+  items = items.map((item) => ({ ...item, timestamp: isoTime(item.timestamp) }));
   if (demoPrefix) items = items.filter((item) => item.device_id.startsWith(demoPrefix));
   alertTotal += items.length;
   if (currentView !== 'activity') unread += items.length;
@@ -331,6 +341,25 @@ function status(state, text) {
   $('status').className = `connection ${state}`; $('status-label').textContent = text;
   $('system-status').textContent = state === 'live' ? `Live stream connected · ${user}` : state === 'connecting' ? 'Connecting to the live stream' : 'Stream interrupted · reconnecting';
 }
+async function loadSnapshot(who, version, ws, generation) {
+  snapshotController?.abort(); snapshotController = new AbortController();
+  const controller = snapshotController, view = viewport();
+  const area = `south=${view.south}&west=${view.west}&north=${view.north}&east=${view.east}`;
+  try {
+    let cursor;
+    do {
+      const page = await api(`/devices/latest?limit=1000&${area}${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`, { signal: controller.signal }, who);
+      if (!connectionCurrent(ws, version, generation)) return;
+      page.items.forEach(queuePosition); cursor = page.next_cursor;
+    } while (cursor);
+  } catch (cause) { if (cause.name !== 'AbortError' && connectionCurrent(ws, version, generation)) error(cause.message); }
+}
+let viewportTimer;
+function sendViewport() {
+  clearTimeout(viewportTimer);
+  viewportTimer = setTimeout(() => { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'viewport', ...viewport() })); }, 200);
+}
+map.on('moveend', sendViewport);
 function connect(who, version) {
   const generation = ++connectionVersion;
   const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?user_id=${encodeURIComponent(who)}`);
@@ -340,18 +369,10 @@ function connect(who, version) {
     const message = JSON.parse(data);
     if (message.type === 'ready') {
       status('live', 'Connected');
-      snapshotController?.abort(); snapshotController = new AbortController();
-      const controller = snapshotController;
-      try {
-        let cursor;
-        do {
-          const page = await api(`/devices/latest?limit=1000${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`, { signal: controller.signal }, who);
-          if (!connectionCurrent(ws, version, generation)) return;
-          page.items.forEach(queuePosition); cursor = page.next_cursor;
-        } while (cursor);
-        await loadZones(version, who, ws);
-      } catch (cause) { if (cause.name !== 'AbortError' && connectionCurrent(ws, version, generation)) error(cause.message); }
-    } else if (message.type === 'locations') { received += message.items.length; message.items.forEach(queuePosition); }
+      ws.send(JSON.stringify({ type: 'viewport', ...viewport() }));
+      try { await loadZones(version, who, ws); } catch (cause) { if (connectionCurrent(ws, version, generation)) error(cause.message); }
+    } else if (message.type === 'subscribed') loadSnapshot(who, version, ws, generation);
+    else if (message.type === 'positions') { received += message.items.length; message.items.forEach((item) => queuePosition(positionItem(item))); }
     else if (message.type === 'inside_report') receiveAlerts(message.items);
     else if (message.type === 'zones_changed') {
       try { await loadZones(version, who, ws); if (connectionCurrent(ws, version, generation) && currentView === 'brief') loadInsights(); }
@@ -395,7 +416,10 @@ document.addEventListener('keydown', (event) => {
 });
 setInterval(() => { $('update-rate').textContent = `${count(received - rateReceived)} updates / sec`; rateReceived = received; $('clock').textContent = new Date().toLocaleTimeString(); }, 1000);
 async function metrics() {
-  try { const data = await api('/metrics'); $('latency').textContent = data.processing_ms.p95 === undefined ? 'Processing —' : `Processing p95 ${Math.round(data.processing_ms.p95)} ms`; } catch { $('latency').textContent = 'Processing unavailable'; }
+  try {
+    const data = await api('/metrics'), p95 = data.instances.filter((item) => item.role === 'processor' && item.processing_ms.p95 !== undefined).map((item) => item.processing_ms.p95);
+    $('latency').textContent = p95.length ? `Processing p95 ${Math.round(Math.max(...p95))} ms` : 'Processing —';
+  } catch { $('latency').textContent = 'Processing unavailable'; }
 }
 setInterval(metrics, 5000); metrics(); setIdentity(); renderZones(); renderAlerts(); renderFleet(); connect(user, epoch);
 
