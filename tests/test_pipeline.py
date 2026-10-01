@@ -10,6 +10,7 @@ from websockets.sync.client import connect
 from geo_tracking.db import Database
 from geo_tracking.metrics import PROCESSOR
 from geo_tracking.processor import Processor, PublishStalled
+from tests.conftest import Worker, free_port
 from tests.helpers import RIGA, collect, dashboard, look, micros, report, silent, wait_for, zone
 
 
@@ -212,4 +213,21 @@ def test_processor_restart_preserves_watermarks(stack, http) -> None:
     http.post("/locations", json=report(offset=4))
     assert collect(socket, "inside_report", 1)[0]["timestamp"] == micros(4)
     silent(socket, "inside_report", 0.5)
+    socket.close()
+
+
+def test_a_joining_processor_takes_partitions_without_losing_a_report(stack, http) -> None:
+    socket = dashboard(stack, "alice")
+    first = [report(f"split-{index}", offset=1) for index in range(100)]
+    assert http.post("/locations/batch", json=first).status_code == 202
+    assert len(collect(socket, "positions", 100)) >= 100
+    second = Worker(stack.settings.model_copy(update={"metrics_port": free_port()})).start()
+    try:
+        later = [report(f"split-{index}", offset=2) for index in range(100)]
+        assert http.post("/locations/batch", json=later).status_code == 202
+        delivered = {(item[0], item[3]) for item in collect(socket, "positions", 100)}
+        assert delivered >= {(item["device_id"], micros(2)) for item in later}
+    finally:
+        second.stop()
+    assert wait_for(lambda: all(latest(http, f"split-{i}") for i in (0, 50, 99)))
     socket.close()

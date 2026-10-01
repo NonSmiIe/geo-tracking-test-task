@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     ack_interval_seconds: float = Field(default=0.2, gt=0)
 
     processor_batch: int = Field(default=2000, ge=1)
+    processor_transactions: int = Field(default=4, ge=1)
     processor_poll_ms: int = Field(default=50, ge=1)
     processor_retry_seconds: float = Field(default=1, gt=0)
     publish_deadline_seconds: float = Field(default=30, gt=0)

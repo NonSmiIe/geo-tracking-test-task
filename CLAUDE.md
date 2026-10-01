@@ -11,7 +11,7 @@ Take-home submission: real-time geo-tracking on FastAPI, PostGIS, Kafka and NATS
 ## Invariants that break silently
 
 - **One owner per device.** The producer's partitioner must stay `murmur2_random` (`test_librdkafka_partitions_every_key_like_the_java_default`). Kafka is keyed by `device_id`, and a device's watermark is safe only because one processor owns its partition. Never produce reports with another key, and never let two consumers of the group share a partition.
-- **Order inside a processor batch:** DB commit → NATS publish + flush → Kafka offset commit. Committing offsets earlier loses reports on a crash; publishing before the DB commit sends events for rolled-back data.
+- **Order inside a partition lane:** DB commit → NATS publish + flush → Kafka offset commit, per partition. Lanes start and stop only in the rebalance listener, so a revoked partition has no lane left fetching it. Committing offsets earlier loses reports on a crash; publishing before the DB commit sends events for rolled-back data.
 - **Freshness comes from the upsert's `RETURNING old.reported_at`.** A sample is fresh only if its device came back from the upsert and the sample is newer than that old watermark. The upsert writes only each device's newest sample, but matching runs on every fresh sample; collapsing before matching drops alerts for devices that cross a zone inside one batch.
 - **The upsert stays monotonic** (`WHERE device.reported_at < excluded.reported_at`). It is the guard against a zombie owner during a rebalance.
 - **`zone_footprint` must stay a superset of the geodesic circle.** It is only a candidate filter; `test_footprint_candidates_equal_exact_geography_everywhere` is the proof. Run that test after any change to the function or the matching query.

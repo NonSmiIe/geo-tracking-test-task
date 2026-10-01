@@ -50,7 +50,7 @@ class Zone(Base):
 class DeviceLatest(Base):
     __tablename__ = "device_latest"
     __table_args__ = (Index("device_latest_cell", "cell"),)
-    device_id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    device_id: Mapped[str] = mapped_column(String(96, collation="C"), primary_key=True)
     position: Mapped[WKBElement] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False))
     reported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     cell: Mapped[int] = mapped_column(Integer, Computed("grid_cell(position)", persisted=True))

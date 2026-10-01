@@ -6,7 +6,7 @@ from time import monotonic, time
 
 import orjson
 from aiohttp import web
-from aiokafka import AIOKafkaConsumer, ConsumerRecord, TopicPartition
+from aiokafka import AIOKafkaConsumer, ConsumerRebalanceListener, ConsumerRecord, TopicPartition
 from aiokafka.errors import CommitFailedError, IllegalStateError
 from nats.aio.client import Client
 from nats.errors import Error as NatsError
@@ -41,11 +41,13 @@ def frame(kind: str, items: list) -> bytes:
     return orjson.dumps({"type": kind, "items": items})
 
 
-class Processor:
+class Processor(ConsumerRebalanceListener):
     def __init__(self, settings: Settings, db: Database, nats: Client, consumer: AIOKafkaConsumer):
         self.settings, self.db, self.nats, self.consumer = settings, db, nats, consumer
         self.subjects = Subjects(settings.subject_prefix)
         self.polled = time()
+        self.lanes: dict[TopicPartition, asyncio.Task[None]] = {}
+        self.transactions = asyncio.Semaphore(settings.processor_transactions)
 
     def unique(self, records: list[Record], seen: set[tuple[str, int]]) -> list[Record]:
         kept = []
@@ -58,16 +60,14 @@ class Processor:
             kept.append(record)
         return kept
 
-    async def process(self, batches: dict[TopicPartition, list[ConsumerRecord]]) -> None:
+    async def process(self, partition: int, items: list[ConsumerRecord]) -> None:
         topic = self.settings.kafka_topic
-        async with self.db.sessions() as session, session.begin():
-            done = await persisted(session, topic)
+        async with self.transactions, self.db.sessions() as session, session.begin():
+            limit = await persisted(session, topic, partition)
             replayed: list[Record] = []
             live: list[Record] = []
-            for partition, items in batches.items():
-                limit = done.get(partition.partition, -1)
-                for item in items:
-                    (replayed if item.offset <= limit else live).append(orjson.loads(item.value))
+            for item in items:
+                (replayed if item.offset <= limit else live).append(orjson.loads(item.value))
             seen: set[tuple[str, int]] = set()
             replayed, live = self.unique(replayed, seen), self.unique(live, seen)
             advanced = await persist_latest(session, live)
@@ -79,11 +79,7 @@ class Processor:
             ]
             emitted = replayed + fresh
             matches = await match_records(session, emitted) if emitted else []
-            await advance(
-                session,
-                topic,
-                {partition.partition: items[-1].offset for partition, items in batches.items()},
-            )
+            await advance(session, topic, partition, items[-1].offset)
         RECORDS.labels("replayed").inc(len(replayed))
         RECORDS.labels("stale").inc(len(live) - len(fresh))
         RECORDS.labels("committed").inc(len(fresh))
@@ -139,38 +135,49 @@ class Processor:
 
     async def run(self, stopping: asyncio.Event) -> None:
         while not stopping.is_set():
-            batches: dict[TopicPartition, list[ConsumerRecord]] = await self.consumer.getmany(
+            self.polled = time()
+            LAST_POLL.set(self.polled)
+            PARTITIONS.set(len(self.lanes))
+            for partition, lane in tuple(self.lanes.items()):
+                if lane.done():
+                    del self.lanes[partition]
+                    lane.result()
+            await asyncio.sleep(0.1)
+        await self.on_partitions_revoked(set(self.lanes))
+
+    async def on_partitions_assigned(self, assigned: set[TopicPartition]) -> None:
+        for partition in assigned - self.lanes.keys():
+            self.lanes[partition] = asyncio.create_task(self.lane(partition))
+
+    async def on_partitions_revoked(self, revoked: set[TopicPartition]) -> None:
+        leaving = [self.lanes.pop(partition) for partition in revoked if partition in self.lanes]
+        for lane in leaving:
+            lane.cancel()
+        await asyncio.gather(*leaving, return_exceptions=True)
+
+    async def lane(self, partition: TopicPartition) -> None:
+        while True:
+            fetched = await self.consumer.getmany(
+                partition,
                 timeout_ms=self.settings.processor_poll_ms,
                 max_records=self.settings.processor_batch,
             )
-            self.polled = time()
-            LAST_POLL.set(self.polled)
-            PARTITIONS.set(len(self.consumer.assignment()))
-            if not batches:
+            items = fetched.get(partition)
+            if not items:
                 continue
             started = monotonic()
             try:
-                await self.process(batches)
+                await self.process(partition.partition, items)
             except DATABASE_ERRORS:
                 logger.exception("Batch processing failed; replaying from the first offset")
                 BATCHES.labels("failed").inc()
-                owned = self.consumer.assignment()
-                for partition, items in batches.items():
-                    if partition in owned:
-                        self.consumer.seek(partition, items[0].offset)
+                self.consumer.seek(partition, items[0].offset)
                 await asyncio.sleep(self.settings.processor_retry_seconds)
                 continue
             BATCH_SECONDS.observe(monotonic() - started)
             BATCHES.labels("committed").inc()
-            owned = self.consumer.assignment()
-            offsets = {
-                partition: items[-1].offset + 1
-                for partition, items in batches.items()
-                if partition in owned
-            }
             try:
-                if offsets:
-                    await self.consumer.commit(offsets)
+                await self.consumer.commit({partition: items[-1].offset + 1})
             except (CommitFailedError, IllegalStateError):
                 logger.warning("Offset commit lost to a rebalance; the new owner replays as stale")
                 COMMITS_LOST.inc()
@@ -178,7 +185,6 @@ class Processor:
 
 def consumer(settings: Settings) -> AIOKafkaConsumer:
     return AIOKafkaConsumer(
-        settings.kafka_topic,
         bootstrap_servers=settings.kafka_bootstrap,
         group_id=settings.kafka_group,
         enable_auto_commit=False,
@@ -210,11 +216,12 @@ async def serve(
     settings: Settings, stopping: asyncio.Event, assigned: asyncio.Event | None = None
 ) -> None:
     await ensure_topic(settings)
-    db = Database(settings, pool_size=2)
+    db = Database(settings, pool_size=settings.processor_transactions)
     nats = await connect_nats(settings)
     kafka = consumer(settings)
-    await kafka.start()
     processor = Processor(settings, db, nats, kafka)
+    kafka.subscribe([settings.kafka_topic], listener=processor)
+    await kafka.start()
     runner = web.AppRunner(health_app(processor, settings), access_log=None)
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", settings.metrics_port).start()
