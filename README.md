@@ -169,6 +169,7 @@ Apple M4 Pro; the Docker VM has 14 CPUs and 8 GB, shared with unrelated containe
 | 100,000 · 300 s | 19,992 | 6,000,000 / 6,000,000 | 41 / 196 / 422 ms | 234% | 4 × 19% | [passed](evidence/scaling-100k.json) |
 | 100,000 · 900 s | 19,998 | 18,000,000 / 18,000,000 | 41 / 190 / 527 ms | 232% | 4 × 20% | [passed](evidence/baseline-100k.json) |
 | 150,000 · 300 s | 29,993 | 9,000,000 / 9,000,000 | 53 / 216 / 653 ms | 265% | 4 × 19% | [failed: Kafka memory growth 87 MiB > 64](evidence/capacity/rung-150k.json) |
+| 150,000 · 300 s, edge + 4 api + 2 gateway replicas | 29,993 | 9,000,000 / 9,000,000 | 71 / 278 / 510 ms | 4 × 58% + gateways 46% + edge 51% | 4 × 17% | [passed](evidence/capacity/rung-150k-h1.json) |
 
 In every passed run all four sessions reconciled exactly, including the probe viewport, which received precisely the positions in its subscribed tiles. The earlier single-process design's 10,000-device runs remain in `evidence/` under [policy v2](evidence/acceptance-policy.md).
 
