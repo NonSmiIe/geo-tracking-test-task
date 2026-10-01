@@ -4,17 +4,18 @@ from contextlib import asynccontextmanager
 from functools import partial
 from pathlib import Path
 
+import aiohttp
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from geo_tracking.api import demo, devices, geozones, health, locations
 from geo_tracking.api.services import Services, zones_changed
-from geo_tracking.bus import Subjects, connect_nats, ensure_topic, kafka_producer, serve_metrics
+from geo_tracking.bus import Subjects, connect_nats, ensure_topic, kafka_producer
 from geo_tracking.db import DATABASE_ERRORS, Database
 from geo_tracking.demo import Demo
 from geo_tracking.ingest import Ingest
-from geo_tracking.metrics import Metrics, monitor_loop
+from geo_tracking.metrics import monitor_loop
 from geo_tracking.schemas import Report
 from geo_tracking.settings import Settings
 
@@ -38,27 +39,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await producer.start()
         nats = await connect_nats(settings)
         subjects = Subjects(settings.subject_prefix)
-        metrics = Metrics("api")
-        ingest = Ingest(settings, producer, metrics)
+        ingest = Ingest(settings, producer)
+        prometheus = aiohttp.ClientSession(
+            settings.prometheus_url, timeout=aiohttp.ClientTimeout(total=2)
+        )
         services = Services(
             settings=settings,
             db=db,
             nats=nats,
             subjects=subjects,
-            metrics=metrics,
+            prometheus=prometheus,
             ingest=ingest,
             demo=Demo(settings, db, ingest, partial(zones_changed, nats, subjects)),
         )
         app.state.services = services
-        responder = await serve_metrics(nats, subjects, metrics.snapshot)
-        monitor = asyncio.create_task(monitor_loop(metrics))
+        monitor = asyncio.create_task(monitor_loop("api"))
         try:
             yield
         finally:
             await services.demo.close()
             monitor.cancel()
             await asyncio.gather(monitor, return_exceptions=True)
-            await responder.unsubscribe()
+            await prometheus.close()
             await producer.stop()
             await nats.drain()
             await db.close()

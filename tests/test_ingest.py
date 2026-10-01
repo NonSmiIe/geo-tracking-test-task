@@ -5,7 +5,6 @@ import pytest
 from aiokafka.errors import KafkaTimeoutError
 
 from geo_tracking.ingest import Acknowledgements, Ingest, Overloaded, Window
-from geo_tracking.metrics import Metrics
 from geo_tracking.schemas import ReportAdapter
 from geo_tracking.settings import Settings
 from tests.helpers import report
@@ -57,7 +56,7 @@ class DeviceSocket:
 
 def ingest(raise_on_send: bool, window: int = 4) -> Ingest:
     settings = Settings(produce_window=window, admission_timeout_seconds=0.05)
-    return Ingest(settings, FailingProducer(raise_on_send), Metrics("test"))
+    return Ingest(settings, FailingProducer(raise_on_send))
 
 
 @pytest.mark.parametrize("raise_on_send", [True, False])

@@ -1,7 +1,7 @@
 import re
 from statistics import median
 
-POLICY = "operational-v3"
+POLICY = "operational-v4"
 
 
 def assess_workload(generated: dict) -> dict:
@@ -34,25 +34,25 @@ def assess_workload(generated: dict) -> dict:
 
 
 def assess_pipeline(acked: int, baseline: dict, final: dict) -> dict:
-    def total(snapshot: dict, role: str, name: str) -> float:
-        return snapshot["roles"].get(role, {}).get(name, 0)
+    def delta(name: str) -> float:
+        return (final.get(name) or 0) - (baseline.get(name) or 0)
 
-    committed = total(final, "processor", "reports_committed") - total(
-        baseline, "processor", "reports_committed"
-    )
-    evicted = total(final, "gateway", "slow_connections_closed") - total(
-        baseline, "gateway", "slow_connections_closed"
-    )
-    failed = total(final, "processor", "batches_failed") - total(
-        baseline, "processor", "batches_failed"
-    )
     checks = {
-        "every_acked_report_committed": committed == acked,
-        "consumer_lag_drained": total(final, "processor", "consumer_lag") == 0,
-        "no_session_evicted": evicted == 0,
-        "no_failed_batches": failed == 0,
+        "counters_never_reset": final.get("counter_resets") == 0,
+        "every_acked_report_committed": delta("committed") == acked,
+        "consumer_lag_drained": final.get("consumer_lag") == 0,
+        "no_session_evicted": delta("evicted") == 0,
+        "no_slow_consumer": delta("slow_consumers") == 0,
+        "no_failed_batches": delta("failed_batches") == 0,
     }
-    return {"passed": all(checks.values()), "checks": checks, "committed": committed}
+    return {
+        "passed": all(checks.values()),
+        "checks": checks,
+        "committed": delta("committed"),
+        "stale": delta("stale"),
+        "duplicate": delta("duplicate"),
+        "replayed": delta("replayed"),
+    }
 
 
 def memory_bytes(value: str) -> float:

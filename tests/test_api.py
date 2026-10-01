@@ -1,5 +1,6 @@
 import httpx
 import pytest
+from prometheus_client.parser import text_string_to_metric_families
 
 from tests.helpers import report, wait_for, zone
 
@@ -114,12 +115,25 @@ def test_report_validation_and_bounded_body(http: httpx.Client) -> None:
     assert http.post("/locations", json=report()).json() == {"accepted": 1}
 
 
-def test_health_and_aggregated_metrics(http: httpx.Client) -> None:
+def samples(text: str) -> dict[tuple[str, tuple], float]:
+    return {
+        (sample.name, tuple(sorted(sample.labels.items()))): sample.value
+        for family in text_string_to_metric_families(text)
+        for sample in family.samples
+    }
+
+
+def test_health_and_prometheus_exposition_on_every_role(stack, http: httpx.Client) -> None:
     assert http.get("/health/live").json() == {"status": "alive"}
     assert http.get("/health/ready").json() == {"status": "ready"}
-    roles = http.get("/metrics").json()["roles"]
-    assert {role: roles[role]["instances"] for role in ("api", "gateway", "processor")} == {
-        "api": 1,
-        "gateway": 1,
-        "processor": 1,
-    }
+    accepted = ("fleet_ingest_reports_total", (("outcome", "accepted"), ("transport", "http")))
+    before = samples(http.get("/metrics").text).get(accepted, 0)
+    batch = [report(offset=1), report(offset=2)]
+    assert http.post("/locations/batch", json=batch).status_code == 202
+    assert samples(http.get("/metrics").text)[accepted] == before + 2
+    processor = f"http://127.0.0.1:{stack.settings.metrics_port}"
+    committed = ("fleet_processor_records_total", (("outcome", "committed"),))
+    assert wait_for(lambda: samples(httpx.get(processor + "/metrics").text).get(committed, 0) >= 2)
+    assert httpx.get(processor + "/health/live").json() == {"status": "alive"}
+    gateway = stack.ws_url.replace("ws", "http", 1)
+    assert ("fleet_gateway_connections", ()) in samples(httpx.get(gateway + "/metrics").text)

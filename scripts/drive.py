@@ -83,8 +83,6 @@ async def verify(url: str) -> dict:
                 url + f"/geozones/{zone_id}", headers={"X-User-ID": other}
             ) as response:
                 assert response.status == 404
-            async with client.get(url + "/metrics") as response:
-                roles = (await response.json())["roles"]
             return {
                 "passed": True,
                 "inside_then_outside_preserved": True,
@@ -92,9 +90,6 @@ async def verify(url: str) -> dict:
                 "other_user_received_no_alert": True,
                 "sibling_survives_disconnect": True,
                 "private_crud": True,
-                "api_instances": roles["api"]["instances"],
-                "processor_instances": roles["processor"]["instances"],
-                "consumer_lag": roles["processor"]["consumer_lag"],
             }
         finally:
             for socket in sockets:

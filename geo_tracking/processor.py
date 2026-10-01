@@ -2,17 +2,30 @@ import asyncio
 import logging
 import signal
 from collections import defaultdict
-from time import monotonic
+from time import monotonic, time
 
 import orjson
+from aiohttp import web
 from aiokafka import AIOKafkaConsumer, ConsumerRecord, TopicPartition
 from aiokafka.errors import CommitFailedError, IllegalStateError
 from nats.aio.client import Client
 from nats.errors import Error as NatsError
 
-from geo_tracking.bus import Subjects, connect_nats, ensure_topic, serve_metrics
+from geo_tracking.bus import Subjects, connect_nats, ensure_topic
 from geo_tracking.db import DATABASE_ERRORS, Database
-from geo_tracking.metrics import Metrics, monitor_loop
+from geo_tracking.metrics import (
+    ALERTS,
+    BATCH_SECONDS,
+    BATCHES,
+    COMMITS_LOST,
+    FRESHNESS,
+    LAST_POLL,
+    PARTITIONS,
+    PUBLISH_RETRIES,
+    RECORDS,
+    exposition,
+    monitor_loop,
+)
 from geo_tracking.settings import Settings
 from geo_tracking.spatial import Record, advance, match_records, persist_latest, persisted, stored
 from geo_tracking.tiles import position_subject
@@ -32,24 +45,14 @@ class Processor:
     def __init__(self, settings: Settings, db: Database, nats: Client, consumer: AIOKafkaConsumer):
         self.settings, self.db, self.nats, self.consumer = settings, db, nats, consumer
         self.subjects = Subjects(settings.subject_prefix)
-        self.metrics = Metrics("processor")
-        self.consumer_lag = 0
-        self.metrics.gauges["consumer_lag"] = lambda: self.consumer_lag
-
-    async def refresh_lag(self) -> None:
-        total = 0
-        for partition in self.consumer.assignment():
-            highwater = self.consumer.highwater(partition)
-            if highwater is not None:
-                total += max(0, highwater - await self.consumer.position(partition))
-        self.consumer_lag = total
+        self.polled = time()
 
     def unique(self, records: list[Record], seen: set[tuple[str, int]]) -> list[Record]:
         kept = []
         for record in records:
             key = record[0], record[3]
             if key in seen:
-                self.metrics.counts["duplicates"] += 1
+                RECORDS.labels("duplicate").inc()
                 continue
             seen.add(key)
             kept.append(record)
@@ -79,10 +82,10 @@ class Processor:
                 topic,
                 {partition.partition: items[-1].offset for partition, items in batches.items()},
             )
-        self.metrics.counts["replayed"] += len(replayed)
-        self.metrics.counts["stale"] += len(live) - len(fresh)
-        self.metrics.counts["reports_committed"] += len(fresh)
-        self.metrics.counts["alerts_generated"] += len(matches)
+        RECORDS.labels("replayed").inc(len(replayed))
+        RECORDS.labels("stale").inc(len(live) - len(fresh))
+        RECORDS.labels("committed").inc(len(fresh))
+        ALERTS.inc(len(matches))
         positions: dict[str, list] = defaultdict(list)
         for record in emitted:
             positions[position_subject(self.settings.subject_prefix, record[1], record[2])].append(
@@ -110,6 +113,8 @@ class Processor:
                 for start in range(0, len(items), size)
             ]
         await self.publish(messages)
+        if emitted:
+            FRESHNESS.observe(time() - min(record[3] for record in emitted) / 1_000_000)
 
     async def publish(self, messages: list[tuple[str, bytes]]) -> None:
         deadline = monotonic() + self.settings.publish_deadline_seconds
@@ -127,7 +132,7 @@ class Processor:
                 logger.warning(
                     "NATS unavailable after commit; waiting to deliver the batch's events"
                 )
-                self.metrics.counts["publish_retries"] += 1
+                PUBLISH_RETRIES.inc()
                 await asyncio.sleep(self.settings.processor_retry_seconds)
 
     async def run(self, stopping: asyncio.Event) -> None:
@@ -136,23 +141,25 @@ class Processor:
                 timeout_ms=self.settings.processor_poll_ms,
                 max_records=self.settings.processor_batch,
             )
+            self.polled = time()
+            LAST_POLL.set(self.polled)
+            PARTITIONS.set(len(self.consumer.assignment()))
             if not batches:
-                await self.refresh_lag()
                 continue
             started = monotonic()
             try:
                 await self.process(batches)
             except DATABASE_ERRORS:
                 logger.exception("Batch processing failed; replaying from the first offset")
-                self.metrics.counts["batches_failed"] += 1
+                BATCHES.labels("failed").inc()
                 owned = self.consumer.assignment()
                 for partition, items in batches.items():
                     if partition in owned:
                         self.consumer.seek(partition, items[0].offset)
                 await asyncio.sleep(self.settings.processor_retry_seconds)
                 continue
-            self.metrics.processing_ms.append((monotonic() - started) * 1000)
-            self.metrics.counts["batches_committed"] += 1
+            BATCH_SECONDS.observe(monotonic() - started)
+            BATCHES.labels("committed").inc()
             owned = self.consumer.assignment()
             offsets = {
                 partition: items[-1].offset + 1
@@ -164,8 +171,7 @@ class Processor:
                     await self.consumer.commit(offsets)
             except (CommitFailedError, IllegalStateError):
                 logger.warning("Offset commit lost to a rebalance; the new owner replays as stale")
-                self.metrics.counts["commits_lost"] += 1
-            await self.refresh_lag()
+                COMMITS_LOST.inc()
 
 
 def consumer(settings: Settings) -> AIOKafkaConsumer:
@@ -181,6 +187,23 @@ def consumer(settings: Settings) -> AIOKafkaConsumer:
     )
 
 
+def health_app(processor: Processor, settings: Settings) -> web.Application:
+    async def metrics(request: web.Request) -> web.Response:
+        body, content_type = exposition("processor")
+        return web.Response(body=body, headers={"Content-Type": content_type})
+
+    async def live(request: web.Request) -> web.Response:
+        stalled = time() - processor.polled > settings.publish_deadline_seconds + 10
+        return web.json_response(
+            {"status": "stalled" if stalled else "alive"}, status=503 if stalled else 200
+        )
+
+    app = web.Application()
+    app.router.add_get("/metrics", metrics)
+    app.router.add_get("/health/live", live)
+    return app
+
+
 async def serve(
     settings: Settings, stopping: asyncio.Event, assigned: asyncio.Event | None = None
 ) -> None:
@@ -190,8 +213,10 @@ async def serve(
     kafka = consumer(settings)
     await kafka.start()
     processor = Processor(settings, db, nats, kafka)
-    responder = await serve_metrics(nats, processor.subjects, processor.metrics.snapshot)
-    monitor = asyncio.create_task(monitor_loop(processor.metrics))
+    runner = web.AppRunner(health_app(processor, settings), access_log=None)
+    await runner.setup()
+    await web.TCPSite(runner, "0.0.0.0", settings.metrics_port).start()
+    monitor = asyncio.create_task(monitor_loop("processor"))
     running = asyncio.create_task(processor.run(stopping))
     try:
         if assigned is not None:
@@ -203,7 +228,7 @@ async def serve(
         running.cancel()
         monitor.cancel()
         await asyncio.gather(running, monitor, return_exceptions=True)
-        await responder.unsubscribe()
+        await runner.cleanup()
         await kafka.stop()
         await (nats.drain() if nats.is_connected else nats.close())
         await db.close()

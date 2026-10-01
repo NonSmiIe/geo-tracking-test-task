@@ -2,12 +2,12 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, Response, WebSocket
 from starlette.requests import HTTPConnection
 
-from geo_tracking.bus import Subjects, connect_nats, serve_metrics
+from geo_tracking.bus import connect_nats
 from geo_tracking.gateway import Gateway
-from geo_tracking.metrics import Metrics, monitor_loop
+from geo_tracking.metrics import exposition, monitor_loop
 from geo_tracking.schemas import Identifier
 from geo_tracking.settings import Settings
 
@@ -18,17 +18,14 @@ def create_gateway_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         nats = await connect_nats(settings)
-        metrics = Metrics("gateway")
-        app.state.gateway = Gateway(settings, nats, metrics)
-        responder = await serve_metrics(nats, Subjects(settings.subject_prefix), metrics.snapshot)
-        monitor = asyncio.create_task(monitor_loop(metrics))
+        app.state.gateway = Gateway(settings, nats)
+        monitor = asyncio.create_task(monitor_loop("gateway"))
         try:
             yield
         finally:
             app.state.gateway.close()
             monitor.cancel()
             await asyncio.gather(monitor, return_exceptions=True)
-            await responder.unsubscribe()
             await nats.drain()
 
     app = FastAPI(title="Fleetline gateway", lifespan=lifespan)
@@ -47,6 +44,11 @@ def create_gateway_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/health/ready")
     async def ready() -> dict:
         return {"status": "ready"}
+
+    @app.get("/metrics", include_in_schema=False)
+    async def metrics() -> Response:
+        body, content_type = exposition("gateway")
+        return Response(body, media_type=content_type)
 
     return app
 

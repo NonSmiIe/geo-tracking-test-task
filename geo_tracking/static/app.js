@@ -444,9 +444,9 @@ document.addEventListener('keydown', (event) => {
 setInterval(() => { $('update-rate').textContent = `${count(received - rateReceived)} updates / sec`; rateReceived = received; $('clock').textContent = new Date().toLocaleTimeString(); }, 1000);
 async function metrics() {
   try {
-    const data = await api('/metrics'), p95 = data.instances.filter((item) => item.role === 'processor' && item.processing_ms.p95 !== undefined).map((item) => item.processing_ms.p95);
-    $('latency').textContent = p95.length ? `Processing p95 ${Math.round(Math.max(...p95))} ms` : 'Processing —';
-  } catch { $('latency').textContent = 'Processing unavailable'; }
+    const data = await api('/stats'), fresh = data.freshness_p95_seconds;
+    $('latency').textContent = fresh === null ? 'Freshness —' : `Fresh p95 ${fresh < 1 ? `${Math.round(fresh * 1000)} ms` : `${fresh.toFixed(1)} s`}`;
+  } catch { $('latency').textContent = 'Freshness unavailable'; }
 }
 setInterval(metrics, 5000); metrics(); setIdentity(); renderZones(); renderAlerts(); renderFleet(); connect(user, epoch);
 

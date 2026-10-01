@@ -1,59 +1,97 @@
 import asyncio
-from collections import Counter, deque
-from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
 from time import monotonic
-from uuid import uuid4
+
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    Counter,
+    Gauge,
+    Histogram,
+    ProcessCollector,
+    generate_latest,
+)
+
+ROLES = {role: CollectorRegistry() for role in ("api", "gateway", "processor")}
+API, GATEWAY, PROCESSOR = ROLES["api"], ROLES["gateway"], ROLES["processor"]
+for registry in ROLES.values():
+    ProcessCollector(registry=registry)
+
+INGESTED = Counter(
+    "fleet_ingest_reports",
+    "Reports offered to ingest, by transport and outcome",
+    ["transport", "outcome"],
+    registry=API,
+)
+WINDOW_USED = Gauge(
+    "fleet_ingest_window_used", "Reports sent to Kafka and not yet acknowledged", registry=API
+)
+WINDOW_SIZE = Gauge("fleet_ingest_window_size", "Capacity of the produce window", registry=API)
+
+CONNECTIONS = Gauge("fleet_gateway_connections", "Open dashboard sockets", registry=GATEWAY)
+SUBSCRIPTIONS = Gauge(
+    "fleet_gateway_subscriptions", "NATS subjects held for dashboards", registry=GATEWAY
+)
+FRAMES = Counter("fleet_gateway_frames", "Frames queued to dashboard sockets", registry=GATEWAY)
+FRAME_BYTES = Counter(
+    "fleet_gateway_frame_bytes", "Bytes queued to dashboard sockets", registry=GATEWAY
+)
+EVICTIONS = Counter(
+    "fleet_gateway_evictions", "Dashboards closed for falling behind", ["reason"], registry=GATEWAY
+)
+SLOW_CONSUMERS = Counter(
+    "fleet_gateway_slow_consumers", "NATS slow-consumer errors", registry=GATEWAY
+)
+
+RECORDS = Counter(
+    "fleet_processor_records", "Consumed reports, by outcome", ["outcome"], registry=PROCESSOR
+)
+ALERTS = Counter("fleet_processor_alerts", "Zone matches published", registry=PROCESSOR)
+BATCHES = Counter(
+    "fleet_processor_batches", "Processed batches, by outcome", ["outcome"], registry=PROCESSOR
+)
+BATCH_SECONDS = Histogram(
+    "fleet_processor_batch_seconds",
+    "Database and publish time of one batch",
+    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5),
+    registry=PROCESSOR,
+)
+FRESHNESS = Histogram(
+    "fleet_processor_freshness_seconds",
+    "Report timestamp to published event, oldest per batch",
+    buckets=(0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 300),
+    registry=PROCESSOR,
+)
+PUBLISH_RETRIES = Counter(
+    "fleet_processor_publish_retries", "NATS publish attempts retried", registry=PROCESSOR
+)
+COMMITS_LOST = Counter(
+    "fleet_processor_commits_lost", "Offset commits lost to a rebalance", registry=PROCESSOR
+)
+PARTITIONS = Gauge(
+    "fleet_processor_partitions", "Partitions this processor owns", registry=PROCESSOR
+)
+LAST_POLL = Gauge(
+    "fleet_processor_last_poll_timestamp_seconds", "When Kafka was last polled", registry=PROCESSOR
+)
+
+LOOP_LAG = {
+    role: Histogram(
+        "fleet_event_loop_lag_seconds",
+        "Event loop scheduling delay",
+        buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1),
+        registry=registry,
+    )
+    for role, registry in ROLES.items()
+}
 
 
-def distribution(values: Iterable[float]) -> dict[str, float]:
-    ordered = sorted(values)
-    if not ordered:
-        return {"count": 0}
-    return {
-        "count": len(ordered),
-        "p50": ordered[int((len(ordered) - 1) * 0.5)],
-        "p95": ordered[int((len(ordered) - 1) * 0.95)],
-        "p99": ordered[int((len(ordered) - 1) * 0.99)],
-        "max": ordered[-1],
-    }
+def exposition(role: str) -> tuple[bytes, str]:
+    return generate_latest(ROLES[role]), CONTENT_TYPE_LATEST
 
 
-@dataclass
-class Metrics:
-    role: str
-    instance: str = field(default_factory=lambda: uuid4().hex[:8])
-    counts: Counter = field(default_factory=Counter)
-    processing_ms: deque = field(default_factory=lambda: deque(maxlen=4096))
-    loop_lag_ms: deque = field(default_factory=lambda: deque(maxlen=4096))
-    gauges: dict[str, Callable[[], float]] = field(default_factory=dict)
-
-    def high_water(self, name: str, value: float) -> None:
-        self.counts[name] = max(self.counts[name], value)
-
-    def snapshot(self) -> dict:
-        return {
-            "role": self.role,
-            "instance": self.instance,
-            "counters": dict(self.counts),
-            "gauges": {name: read() for name, read in self.gauges.items()},
-            "processing_ms": distribution(self.processing_ms),
-            "loop_lag_ms": distribution(self.loop_lag_ms),
-        }
-
-
-async def monitor_loop(metrics: Metrics) -> None:
+async def monitor_loop(role: str) -> None:
+    lag = LOOP_LAG[role]
     while True:
         expected = monotonic() + 0.25
         await asyncio.sleep(0.25)
-        metrics.loop_lag_ms.append(max(0.0, (monotonic() - expected) * 1000))
-
-
-def merge(snapshots: list[dict]) -> dict:
-    totals: dict[str, dict[str, float]] = {}
-    for snapshot in snapshots:
-        role = totals.setdefault(snapshot["role"], {"instances": 0})
-        role["instances"] += 1
-        for name, value in {**snapshot["counters"], **snapshot["gauges"]}.items():
-            role[name] = role.get(name, 0) + value
-    return {"roles": totals, "instances": sorted(snapshots, key=lambda item: item["role"])}
+        lag.observe(max(0.0, monotonic() - expected))

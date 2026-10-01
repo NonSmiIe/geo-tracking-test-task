@@ -10,9 +10,16 @@ from aiokafka.structs import RecordMetadata
 from pydantic import ValidationError
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from geo_tracking.metrics import Metrics
+from geo_tracking.metrics import INGESTED, WINDOW_SIZE, WINDOW_USED
 from geo_tracking.schemas import Report, ReportAdapter
 from geo_tracking.settings import Settings
+
+HTTP_ACCEPTED = INGESTED.labels("http", "accepted")
+HTTP_OVERLOADED = INGESTED.labels("http", "overloaded")
+HTTP_FAILED = INGESTED.labels("http", "failed")
+STREAM_ACCEPTED = INGESTED.labels("ws", "accepted")
+STREAM_INVALID = INGESTED.labels("ws", "invalid")
+STREAM_FAILED = INGESTED.labels("ws", "failed")
 
 
 class Overloaded(Exception):
@@ -85,17 +92,17 @@ class Window:
 
 
 class Ingest:
-    def __init__(self, settings: Settings, producer: AIOKafkaProducer, metrics: Metrics) -> None:
-        self.settings, self.producer, self.metrics = settings, producer, metrics
+    def __init__(self, settings: Settings, producer: AIOKafkaProducer) -> None:
+        self.settings, self.producer = settings, producer
         self.window = Window(settings.produce_window)
         self.inflight = 0
         self.closers: set[asyncio.Task[None]] = set()
-        metrics.gauges["produce_inflight"] = lambda: self.inflight
+        WINDOW_SIZE.set(settings.produce_window)
+        WINDOW_USED.set_function(lambda: self.inflight)
 
     async def admit(self, count: int) -> None:
         await self.window.acquire(count)
         self.inflight += count
-        self.metrics.high_water("produce_inflight_high_water", self.inflight)
 
     def release(self, count: int) -> None:
         self.inflight -= count
@@ -113,13 +120,16 @@ class Ingest:
             async with asyncio.timeout(self.settings.admission_timeout_seconds):
                 await self.admit(len(reports))
         except TimeoutError:
-            self.metrics.counts["ingest_rejected"] += len(reports)
+            HTTP_OVERLOADED.inc(len(reports))
             raise Overloaded from None
         try:
             await asyncio.gather(*[await self.send(report) for report in reports])
+        except BaseException:
+            HTTP_FAILED.inc(len(reports))
+            raise
         finally:
             self.release(len(reports))
-        self.metrics.counts["reports_ingested"] += len(reports)
+        HTTP_ACCEPTED.inc(len(reports))
 
     async def stream(self, socket: WebSocket) -> None:
         await socket.accept()
@@ -136,10 +146,11 @@ class Ingest:
             own.release()
             self.release(1)
             if future.cancelled() or future.exception() is not None:
+                STREAM_FAILED.inc()
                 broken()
                 return
             acks.settle(sequence)
-            self.metrics.counts["reports_ingested"] += 1
+            STREAM_ACCEPTED.inc()
 
         async def acknowledge() -> None:
             await socket.send_text(orjson.dumps({"type": "ack", "count": acks.count}).decode())
@@ -168,13 +179,14 @@ class Ingest:
                 try:
                     future = await self.send(report)
                 except KafkaError:
+                    STREAM_FAILED.inc()
                     own.release()
                     self.release(1)
                     broken()
                     break
                 future.add_done_callback(partial(settled, sequence))
         except (ValidationError, orjson.JSONDecodeError):
-            self.metrics.counts["ingest_invalid"] += 1
+            STREAM_INVALID.inc()
             await socket.close(code=1007, reason="invalid_report")
         except (WebSocketDisconnect, OSError, RuntimeError):
             pass

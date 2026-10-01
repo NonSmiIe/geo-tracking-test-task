@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import math
 import multiprocessing
 import sys
 import time
@@ -18,7 +19,35 @@ from generator import Config, Histogram, fingerprint, run
 from geo_tracking.tiles import viewport_subjects
 from scripts.acceptance import POLICY, assess_pipeline, assess_resources, assess_workload
 
+TOTALS = {
+    "accepted": 'sum(fleet_ingest_reports_total{outcome="accepted"})',
+    "committed": 'sum(fleet_processor_records_total{outcome="committed"})',
+    "stale": 'sum(fleet_processor_records_total{outcome="stale"})',
+    "duplicate": 'sum(fleet_processor_records_total{outcome="duplicate"})',
+    "replayed": 'sum(fleet_processor_records_total{outcome="replayed"})',
+    "failed_batches": 'sum(fleet_processor_batches_total{outcome="failed"})',
+    "evicted": "sum(fleet_gateway_evictions_total)",
+    "slow_consumers": "sum(fleet_gateway_slow_consumers_total)",
+    "consumer_lag": "fleet:consumer_lag:records",
+}
+RATES = {
+    "accepted_per_second": "fleet:ingest_accepted:rate1m",
+    "committed_per_second": 'sum(rate(fleet_processor_records_total{outcome="committed"}[1m]))',
+    "consumer_lag": "fleet:consumer_lag:records",
+    "freshness_p95_seconds": "fleet:freshness:p95",
+    "batch_p95_seconds": (
+        "histogram_quantile(0.95, sum by (le) (rate(fleet_processor_batch_seconds_bucket[1m])))"
+    ),
+    "api_loop_lag_p99_seconds": (
+        "histogram_quantile(0.99, sum by (le) "
+        '(rate(fleet_event_loop_lag_seconds_bucket{job="api"}[1m])))'
+    ),
+    "database_statement_seconds_per_second": (
+        'sum(rate(pg_stat_statements_seconds_total{datname="geo"}[1m]))'
+    ),
+}
 WORLD = {"south": -90, "west": -180, "north": 90, "east": 180}
+SCRAPE_SETTLE_SECONDS = 12
 PROBE = {"south": 56.8, "west": 23.8, "north": 57.1, "east": 24.4}
 
 
@@ -108,11 +137,7 @@ def observe(url: str, user: str, viewport: dict, prefix: str, interval: float, r
     return asyncio.run(main())
 
 
-async def stored_latest(project: str, prefix: str) -> dict:
-    query = (
-        "SELECT count(*), coalesce(sum((extract(epoch FROM reported_at) * 1000000)::bigint), 0) "
-        f"FROM device_latest WHERE device_id LIKE '{prefix}-%'"
-    )
+async def psql(project: str, query: str) -> str:
     process = await asyncio.create_subprocess_exec(
         "docker",
         "compose",
@@ -133,8 +158,23 @@ async def stored_latest(project: str, prefix: str) -> dict:
         stdout=asyncio.subprocess.PIPE,
     )
     stdout, _ = await process.communicate()
-    devices, total = stdout.decode().strip().split(",")
+    return stdout.decode().strip()
+
+
+async def stored_latest(project: str, prefix: str) -> dict:
+    devices, total = (
+        await psql(
+            project,
+            "SELECT count(*), coalesce(sum((extract(epoch FROM reported_at) * 1000000)::bigint), 0)"
+            f" FROM device_latest WHERE device_id LIKE '{prefix}-%'",
+        )
+    ).split(",")
     return {"devices": int(devices), "timestamp_sum": str(int(total))}
+
+
+async def forget_devices(project: str, prefix: str) -> None:
+    await psql(project, f"DELETE FROM device_latest WHERE device_id LIKE '{prefix}-%'")
+    await psql(project, "VACUUM (ANALYZE) device_latest")
 
 
 async def docker_stats(project: str) -> list[dict]:
@@ -213,15 +253,29 @@ async def benchmark(args: argparse.Namespace) -> dict:
                 response.raise_for_status()
                 zones.append((owner, (await response.json())["id"]))
 
-        async def metrics() -> dict:
-            async with client.get(args.url + "/metrics") as response:
-                return await response.json()
+        async def value(expression: str) -> float | None:
+            async with client.get(
+                args.prometheus + "/api/v1/query", params={"query": expression}
+            ) as response:
+                result = (await response.json())["data"]["result"]
+            if not result:
+                return None
+            number = float(result[0]["value"][1])
+            return None if math.isnan(number) else number
 
-        baseline = await metrics()
+        async def read(expressions: dict[str, str]) -> dict:
+            values = await asyncio.gather(*map(value, expressions.values()))
+            return dict(zip(expressions, values, strict=True))
+
+        baseline = await read(TOTALS)
+        began = time.monotonic()
 
         async def sample() -> None:
             while True:
-                reading = {"sampled_at": datetime.now(UTC).isoformat(), "metrics": await metrics()}
+                reading = {
+                    "sampled_at": datetime.now(UTC).isoformat(),
+                    "metrics": await read(RATES),
+                }
                 reading["containers"] = await docker_stats(args.project)
                 samples.append(reading)
                 await asyncio.sleep(10)
@@ -266,11 +320,11 @@ async def benchmark(args: argparse.Namespace) -> dict:
                     probes=[sorted(viewport_subjects("p", **PROBE, limit=16))],
                 )
                 await injector
-                for _ in range(120):
-                    final = await metrics()
-                    if final["roles"]["processor"].get("consumer_lag", 1) == 0:
+                for _ in range(180):
+                    if await value(TOTALS["consumer_lag"]) == 0:
                         break
                     await asyncio.sleep(1)
+                await asyncio.sleep(SCRAPE_SETTLE_SECONDS)
                 stop.set()
                 observed = await asyncio.gather(*watchers)
                 stored = await stored_latest(args.project, prefix)
@@ -282,7 +336,13 @@ async def benchmark(args: argparse.Namespace) -> dict:
                     args.url + f"/geozones/{zone_id}", headers={"X-User-ID": owner}
                 ):
                     pass
-        final = await metrics()
+            await forget_devices(args.project, prefix)
+        final = await read(TOTALS)
+        window = f"{int(time.monotonic() - began) + 60}s"
+        final["counter_resets"] = await value(
+            f"sum(resets(fleet_processor_records_total[{window}]))"
+            f" + sum(resets(fleet_ingest_reports_total[{window}]))"
+        )
     acked = generated["counters"].get("acked", 0)
     checksum = generated["checksum"]
     probe = generated["probes"][0]
@@ -362,6 +422,7 @@ async def benchmark(args: argparse.Namespace) -> dict:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://127.0.0.1:8097")
+    parser.add_argument("--prometheus", default="http://127.0.0.1:9097")
     parser.add_argument("--project", default="geo-tracking-test-task")
     parser.add_argument("--devices", type=int, default=100000)
     parser.add_argument("--interval", type=float, default=5)

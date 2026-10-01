@@ -16,6 +16,7 @@ dependencies = [
   "websockets>=14,<17",
   "aiokafka>=0.12,<1",
   "nats-py>=2.10,<3",
+  "prometheus-client>=0.21,<1",
 ]
 
 [dependency-groups]

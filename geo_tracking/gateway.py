@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from geo_tracking.bus import Subjects
-from geo_tracking.metrics import Metrics
+from geo_tracking.metrics import CONNECTIONS, EVICTIONS, FRAME_BYTES, FRAMES, SUBSCRIPTIONS
 from geo_tracking.schemas import ViewportAdapter
 from geo_tracking.settings import Settings
 from geo_tracking.tiles import viewport_subjects
@@ -61,28 +61,28 @@ class Connection:
 
 
 class Gateway:
-    def __init__(self, settings: Settings, nats: Client, metrics: Metrics):
-        self.settings, self.nats, self.metrics = settings, nats, metrics
+    def __init__(self, settings: Settings, nats: Client):
+        self.settings, self.nats = settings, nats
         self.subjects = Subjects(settings.subject_prefix)
         self.routes: dict[str, set[Connection]] = {}
         self.subscriptions: dict[str, Subscription] = {}
         self.connections: dict[str, Connection] = {}
         self.opening = 0
         self.lock = asyncio.Lock()
-        metrics.gauges["dashboard_connections"] = lambda: len(self.connections)
-        metrics.gauges["dashboard_subscriptions"] = lambda: len(self.subscriptions)
+        CONNECTIONS.set_function(lambda: len(self.connections))
+        SUBSCRIPTIONS.set_function(lambda: len(self.subscriptions))
 
     def deliver(self, subject: str, data: bytes) -> None:
         for connection in tuple(self.routes.get(subject, ())):
             if connection.enqueue(data):
-                self.metrics.counts["frames_enqueued"] += 1
-                self.metrics.counts["bytes_enqueued"] += len(data)
+                FRAMES.inc()
+                FRAME_BYTES.inc(len(data))
             else:
                 self.evict(connection, "backlog_overflow")
 
     def evict(self, connection: Connection, reason: str) -> None:
         if connection.reason is None:
-            self.metrics.counts["slow_connections_closed"] += 1
+            EVICTIONS.labels(reason).inc()
         connection.stop(reason)
 
     async def route(self, connection: Connection, subjects: set[str]) -> None:

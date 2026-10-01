@@ -5,7 +5,7 @@ Take-home submission: real-time geo-tracking on FastAPI, PostGIS, Kafka and NATS
 ## Commands
 
 - Stack: `docker compose up --build -d --wait`. Python tooling runs through uv: `uv sync --frozen`, `uv run …`.
-- Gate before every commit: `uv run ruff check && uv run ruff format --check`, plus `docker compose --profile test run --build --no-deps --rm tests` when Python under `geo_tracking/` changed.
+- Gate before every commit: `uv run ruff check && uv run ruff format --check`, plus `docker compose --profile test run --build --no-deps --rm tests` when Python under `geo_tracking/` changed, plus `docker run --rm -v "$PWD/ops/prometheus:/p:ro" -w /p --entrypoint promtool prom/prometheus:v3.5.0 test rules rules_test.yml` when `ops/prometheus` changed.
 - Proving behaviour or capacity: the `drive-fleet` skill.
 
 ## Invariants that break silently
@@ -26,4 +26,5 @@ Take-home submission: real-time geo-tracking on FastAPI, PostGIS, Kafka and NATS
 - Schema changes go through Alembic in `migrations/versions/`; models in `geo_tracking/models.py` must match them.
 - No prose comments in code. `# noqa` and similar directives are fine.
 - `evidence/` is the measurement record: add new runs beside old ones, never rewrite a past result, and declare acceptance criteria before the run they judge.
-- Every `/metrics` counter is cumulative per process. Compare runs by delta against a baseline snapshot, as `scripts/benchmark.py` does.
+- Metrics are Prometheus, defined once in `geo_tracking/metrics.py`; Prometheus (`127.0.0.1:9097`) scrapes every replica and Grafana (`127.0.0.1:3097`) shows them. Counters are per process and reset on restart. Compare runs by delta, as `scripts/benchmark.py` does, and trust a delta only when `resets()` over the window is 0.
+- Alert rules live in `ops/prometheus/rules.yml`; any change to them or to a metric they use needs `rules_test.yml` updated and passing (command above).

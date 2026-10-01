@@ -28,6 +28,7 @@ def settings() -> Settings:
         processor_poll_ms=20,
         ack_interval_seconds=0.05,
         processor_retry_seconds=0.2,
+        metrics_port=free_port(),
     )
     if make_url(value.database_url).database != "geo_test":
         raise RuntimeError("tests require a dedicated geo_test database")

@@ -1,7 +1,7 @@
 import asyncio
 
 from geo_tracking.gateway import Connection, Gateway
-from geo_tracking.metrics import Metrics
+from geo_tracking.metrics import GATEWAY
 from geo_tracking.settings import Settings
 
 
@@ -19,7 +19,7 @@ class Socket:
 
 
 def gateway(settings: Settings) -> Gateway:
-    return Gateway(settings, None, Metrics("test"))
+    return Gateway(settings, None)
 
 
 async def test_stalled_writer_times_out_without_blocking_its_sibling() -> None:
@@ -48,9 +48,11 @@ async def test_backlog_overflow_evicts_only_the_full_connection() -> None:
     settings = Settings(websocket_queue_bytes=1024)
     hub = gateway(settings)
     full, healthy = Connection("alice", Socket(), settings), Connection("alice", Socket(), settings)
+    labels = {"reason": "backlog_overflow"}
+    before = GATEWAY.get_sample_value("fleet_gateway_evictions_total", labels) or 0
     full.enqueue(b"x" * 1000)
     hub.routes["fleet.pos.0"] = {full, healthy}
     hub.deliver("fleet.pos.0", b"y" * 100)
     assert full.reason == "backlog_overflow" and list(full.queue) == [b"x" * 1000]
     assert healthy.reason is None and list(healthy.queue) == [b"y" * 100]
-    assert hub.metrics.counts["slow_connections_closed"] == 1
+    assert GATEWAY.get_sample_value("fleet_gateway_evictions_total", labels) == before + 1

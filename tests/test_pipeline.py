@@ -8,6 +8,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
 from geo_tracking.db import Database
+from geo_tracking.metrics import PROCESSOR
 from geo_tracking.processor import Processor, PublishStalled
 from tests.helpers import RIGA, collect, dashboard, look, micros, report, silent, wait_for, zone
 
@@ -180,12 +181,15 @@ def test_database_failure_replays_the_batch_after_recovery(stack, http) -> None:
 
     asyncio.run(alter("ALTER TABLE device_latest ADD CONSTRAINT blocked CHECK (device_id <> 'x')"))
     socket = dashboard(stack, "alice")
+
+    def failed() -> float:
+        labels = {"outcome": "failed"}
+        return PROCESSOR.get_sample_value("fleet_processor_batches_total", labels) or 0
+
+    before = failed()
     try:
         assert http.post("/locations", json=report("x", offset=1)).status_code == 202
-        failures = wait_for(
-            lambda: http.get("/metrics").json()["roles"]["processor"].get("batches_failed", 0)
-        )
-        assert failures >= 1
+        assert wait_for(lambda: failed() > before)
         silent(socket, "positions", 0.5)
     finally:
         asyncio.run(alter("ALTER TABLE device_latest DROP CONSTRAINT blocked"))

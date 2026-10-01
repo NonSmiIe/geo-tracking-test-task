@@ -36,18 +36,20 @@ def test_workload_fails_on_any_loss_slow_rate_or_timer_tail() -> None:
 
 
 def test_pipeline_requires_exact_commits_drained_lag_and_no_evictions() -> None:
-    def snapshot(committed: int, lag: int = 0, evicted: int = 0) -> dict:
+    def snapshot(committed: int, lag: float | None = 0, evicted: int = 0, resets: int = 0) -> dict:
         return {
-            "roles": {
-                "processor": {"reports_committed": committed, "consumer_lag": lag},
-                "gateway": {"slow_connections_closed": evicted},
-            }
+            "committed": committed,
+            "consumer_lag": lag,
+            "evicted": evicted,
+            "counter_resets": resets,
         }
 
     assert assess_pipeline(500, snapshot(100), snapshot(600))["passed"]
     assert not assess_pipeline(500, snapshot(100), snapshot(599))["passed"]
     assert not assess_pipeline(500, snapshot(100), snapshot(600, lag=3))["passed"]
+    assert not assess_pipeline(500, snapshot(100), snapshot(600, lag=None))["passed"]
     assert not assess_pipeline(500, snapshot(100), snapshot(600, evicted=1))["passed"]
+    assert not assess_pipeline(500, snapshot(100), snapshot(600, resets=1))["passed"]
 
 
 def test_resources_require_samples_headroom_and_steady_memory() -> None:

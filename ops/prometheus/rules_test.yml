@@ -1,0 +1,84 @@
+rule_files:
+  - rules.yml
+
+evaluation_interval: 15s
+
+tests:
+  - name: a processor outage longer than half the retention pages
+    interval: 15s
+    input_series:
+      - series: fleet_ingest_reports_total{outcome="accepted", instance="api-1"}
+        values: 0+15000x40
+      - series: kafka_consumergroup_lag{consumergroup="processors", topic="reports", partition="0"}
+        values: 0+50000x40
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: RetentionAtRisk
+      - eval_time: 10m
+        alertname: RetentionAtRisk
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: Consumer lag is past half of Kafka retention; acked reports will be deleted unread.
+
+  - name: a keeping-up pipeline raises nothing
+    interval: 15s
+    input_series:
+      - series: fleet_ingest_reports_total{outcome="accepted", instance="api-1"}
+        values: 0+15000x40
+      - series: kafka_consumergroup_lag{consumergroup="processors", topic="reports", partition="0"}
+        values: 500x40
+      - series: fleet_processor_partitions{instance="p1"}
+        values: 12x40
+      - series: fleet_processor_partitions{instance="p2"}
+        values: 12x40
+      - series: kafka_topic_partitions{topic="reports"}
+        values: 24x40
+    alert_rule_test:
+      - {eval_time: 10m, alertname: RetentionAtRisk}
+      - {eval_time: 10m, alertname: ConsumerLagGrowing}
+      - {eval_time: 10m, alertname: PartitionsUnowned}
+
+  - name: a dead processor leaves partitions unowned
+    interval: 30s
+    input_series:
+      - series: fleet_processor_partitions{instance="p1"}
+        values: 12x6
+      - series: kafka_topic_partitions{topic="reports"}
+        values: 24x6
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: PartitionsUnowned
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: Some partitions have no processor; their devices are frozen.
+
+  - name: a processor that stops polling is stalled
+    interval: 10s
+    input_series:
+      - series: fleet_processor_last_poll_timestamp_seconds{instance="p1"}
+        values: 0x12
+    alert_rule_test:
+      - {eval_time: 30s, alertname: ProcessorStalled}
+      - eval_time: 2m
+        alertname: ProcessorStalled
+        exp_alerts:
+          - exp_labels: {severity: critical, instance: p1}
+            exp_annotations:
+              summary: p1 has not polled Kafka for 40 s.
+
+  - name: refusing more than one report in a hundred is shedding
+    interval: 15s
+    input_series:
+      - series: fleet_ingest_reports_total{outcome="accepted", instance="api-1"}
+        values: 0+1500x20
+      - series: fleet_ingest_reports_total{outcome="overloaded", instance="api-1"}
+        values: 0+150x20
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: IngestShedding
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: Over 1% of reports are refused with 503.

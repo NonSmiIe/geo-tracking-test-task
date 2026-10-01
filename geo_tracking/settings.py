@@ -36,7 +36,8 @@ class Settings(BaseSettings):
     viewport_tiles: int = Field(default=16, ge=1)
     websocket_queue_bytes: int = Field(default=8388608, ge=1024)
     send_timeout_seconds: float = Field(default=2, gt=0)
-    metrics_gather_seconds: float = Field(default=0.3, gt=0)
+    metrics_port: int = Field(default=9100, ge=0)
+    prometheus_url: str = "http://prometheus:9090"
 
     demo_devices: int = Field(default=6, ge=1)
     demo_seconds: int = Field(default=120, ge=1)

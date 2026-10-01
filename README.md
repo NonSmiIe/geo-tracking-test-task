@@ -96,8 +96,9 @@ After commit the processor publishes to NATS, flushes, and only then commits the
 | `GET /insights` | Fleet freshness and live occupancy of this user's zones |
 | `WS /ws?user_id=` | `ready` → client `viewport` → `subscribed`, then `positions`, `inside_report`, `zones_changed` |
 | `GET/POST /demo`, `/demo/start`, `/demo/stop` | Guided demo for the current user; its state lives in PostgreSQL, so any replica can answer |
-| `/health/live`, `/health/ready` | Liveness; api readiness checks only the Kafka broker (ingest keeps running through a database outage), gateway readiness checks NATS |
-| `/metrics` | Counters and distributions from every api, gateway and processor process, gathered over NATS |
+| `/health/live`, `/health/ready` | Liveness; api readiness checks only the Kafka broker (ingest keeps running through a database outage). Gateway readiness equals liveness, because its NATS client reconnects by itself and draining dashboards would make a blip an outage. Processors serve `/health/live` on port 9100 and report `stalled` once Kafka has not been polled for the publish deadline plus 10 s |
+| `/metrics` | Prometheus exposition, per process: api and gateway on their port, processors on 9100. Not routed by the edge; Prometheus scrapes each replica |
+| `GET /stats` | Fleet-wide freshness p95, ingest rate and consumer lag, read from Prometheus for the dashboard |
 
 Frames:
 
@@ -159,6 +160,26 @@ uv run python scripts/benchmark.py --devices 100000 --duration 900
 The tests run against real PostGIS, Kafka and NATS; each test gets its own topic, consumer group and subject prefix. They cover metre-correct containment and boundaries, high latitudes, poles and the antimeridian, footprint-versus-exact equality, coordinate order, paused and deleted zones, owner scoping, the zone quota, duplicates, stale samples and in-batch zone crossings. They also cover dense overlap (60 zones over the same devices, no rejected report), private delivery to every owner session, viewport routing and retargeting, device-socket acknowledgements, replay after a database failure, a crash between commit and publish, watermarks surviving a processor restart, slow-socket eviction and the guided demo.
 
 The benchmark observes four dashboard sessions, each in its own process: two for the owner of a zone covering the whole fleet, one for another user with a world view, and one for that user with a small probe viewport. It reconciles every position and alert against the generator by count and identity checksum, checks that processors committed exactly what was acknowledged and that consumer lag drained, and records latency from the scheduled timestamp and container resources. The criteria were declared before the run in [acceptance policy v3](evidence/acceptance-policy-v3.md).
+
+## Operations
+
+Prometheus (`127.0.0.1:9097`) scrapes every api, gateway and processor replica, plus HAProxy, kafka-exporter (consumer group lag from the broker), postgres-exporter (`pg_stat_statements`, table stats) and the NATS exporter. Grafana (`127.0.0.1:3097`, anonymous viewer) opens on the Fleetline dashboard. Its rows answer, in order: is the pipeline keeping up, is ingest shedding load, are dashboards healthy, is the database the limit, and is the work balanced. The rules in `ops/prometheus/rules.yml` are unit-tested with `promtool test rules`.
+
+| Alert | Means | First look | Action |
+| --- | --- | --- | --- |
+| `RetentionAtRisk` | Lag exceeds 15 min of ingest; retention is 30 min, so acked reports will be deleted unread | Consumer lag and partitions per processor | Add processors (up to 24). If PostgreSQL is saturated, more processors will not help: see `Statement time per second` |
+| `ConsumerLagGrowing` | Processors commit slower than ingest accepts | Batch time p95, database statement time | Same as above, earlier |
+| `PartitionsUnowned` | Fewer partitions assigned than exist; those devices are frozen | `fleet_processor_partitions` by instance, `TargetDown` | Restart or scale processors; a rebalance assigns orphans within seconds |
+| `ProcessorStalled` | A processor has not polled for 40 s (stuck publishing or on the database) | Its logs; NATS and database health | Its own healthcheck fails and compose restarts it; the replacement replays from the last committed offset, losing nothing |
+| `FreshnessSlow` | p95 from report to published event is over 1 s | Lag, batch time, event-loop lag | Capacity: see the measured ceiling below |
+| `IngestShedding` | Over 1% of HTTP reports get 503 | Produce window fill, Kafka health | Add api replicas if the windows are full but Kafka is healthy; otherwise fix Kafka |
+| `IngestWindowSaturated` | Kafka acknowledges slower than reports arrive on one replica | Kafka CPU and disk | Kafka capacity, not api |
+| `BatchesFailing` | Batches roll back and replay | Processor logs, database errors | Replays are safe; fix the database |
+| `DashboardsEvicted`, `GatewaySlowConsumer` | A dashboard or a gateway subscription fell behind and lost frames | Fanout bytes per gateway | Add gateways; the browser reconnects and resnapshots |
+| `EventLoopLag` | A role's loop is blocked over 250 ms at p99 | CPU of that role | Add replicas of that role |
+| `TargetDown` | A scrape target is not answering | `docker compose ps` | Restart it |
+
+Repartitioning (more than 24 processors) is a new topic, not `--alter`: create `reports-v2` with more partitions, point the api at it, and let the processors drain `reports` before moving their group. Keyed ordering per device holds only within one topic.
 
 ## Measured results
 

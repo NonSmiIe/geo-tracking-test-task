@@ -1,0 +1,83 @@
+groups:
+  - name: fleetline
+    rules:
+      - record: fleet:ingest_accepted:rate1m
+        expr: sum(rate(fleet_ingest_reports_total{outcome="accepted"}[1m]))
+      - record: fleet:consumer_lag:records
+        expr: sum(kafka_consumergroup_lag{consumergroup="processors", topic="reports"})
+      - record: fleet:consumer_lag:seconds
+        expr: fleet:consumer_lag:records / clamp_min(fleet:ingest_accepted:rate1m, 1)
+      - record: fleet:freshness:p95
+        expr: histogram_quantile(0.95, sum by (le) (rate(fleet_processor_freshness_seconds_bucket[1m])))
+
+      - alert: RetentionAtRisk
+        expr: fleet:consumer_lag:seconds > 900
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: Consumer lag is past half of Kafka retention; acked reports will be deleted unread.
+      - alert: ConsumerLagGrowing
+        expr: deriv(fleet:consumer_lag:records[5m]) > 0 and fleet:consumer_lag:records > 10000
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Processors are committing slower than ingest accepts.
+      - alert: PartitionsUnowned
+        expr: sum(fleet_processor_partitions) < max(kafka_topic_partitions{topic="reports"})
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: Some partitions have no processor; their devices are frozen.
+      - alert: ProcessorStalled
+        expr: time() - fleet_processor_last_poll_timestamp_seconds > 40
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.instance }} has not polled Kafka for 40 s."
+      - alert: FreshnessSlow
+        expr: fleet:freshness:p95 > 1
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: p95 time from report to commit is over 1 s.
+      - alert: IngestShedding
+        expr: >
+          sum(rate(fleet_ingest_reports_total{outcome="overloaded"}[1m]))
+          / clamp_min(sum(rate(fleet_ingest_reports_total[1m])), 1) > 0.01
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: Over 1% of reports are refused with 503.
+      - alert: IngestWindowSaturated
+        expr: max by (instance) (fleet_ingest_window_used / fleet_ingest_window_size) > 0.8
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.instance }} keeps its produce window over 80% full; Kafka acks are slow."
+      - alert: BatchesFailing
+        expr: sum(increase(fleet_processor_batches_total{outcome="failed"}[5m])) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: Processor batches are rolling back and replaying.
+      - alert: DashboardsEvicted
+        expr: sum(increase(fleet_gateway_evictions_total[5m])) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: Gateways closed dashboards that could not keep up.
+      - alert: GatewaySlowConsumer
+        expr: sum(increase(fleet_gateway_slow_consumers_total[5m])) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: NATS dropped messages for a gateway subscription.
+      - alert: EventLoopLag
+        expr: >
+          histogram_quantile(0.99, sum by (job, le) (rate(fleet_event_loop_lag_seconds_bucket[1m]))) > 0.25
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.job }} event loops are blocked for over 250 ms at p99."
+      - alert: TargetDown
+        expr: up == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.job }} {{ $labels.instance }} is not answering scrapes."
