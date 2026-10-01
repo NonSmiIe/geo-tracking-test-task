@@ -1,22 +1,15 @@
-from functools import cache
 from typing import Any
 
+import msgspec
 from aiokafka.errors import KafkaError
 from fastapi import APIRouter, HTTPException, Request, WebSocket
-from fastapi.exceptions import RequestValidationError
-from pydantic import TypeAdapter, ValidationError
 
 from geo_tracking.api.services import Services, ServicesDep
 from geo_tracking.ingest import Overloaded
-from geo_tracking.schemas import Report, ReportAdapter, batch_adapter
+from geo_tracking.schemas import REPORT, Report, batch_decoder
 
 router = APIRouter(tags=["locations"])
 REPORT_SCHEMA = {"$ref": "#/components/schemas/Report"}
-
-
-@cache
-def batches(limit: int) -> TypeAdapter:
-    return batch_adapter(limit)
 
 
 async def bounded_body(request: Request, limit: int) -> bytes:
@@ -38,11 +31,11 @@ async def publish(services: Services, reports: list[Report]) -> dict:
     return {"accepted": len(reports)}
 
 
-def parse(adapter: TypeAdapter, body: bytes) -> Any:
+def parse(decoder: msgspec.json.Decoder, body: bytes) -> Any:
     try:
-        return adapter.validate_json(body)
-    except ValidationError as error:
-        raise RequestValidationError(error.errors(include_url=False)) from None
+        return decoder.decode(body)
+    except msgspec.DecodeError as error:
+        raise HTTPException(422, str(error)) from None
 
 
 @router.post(
@@ -52,7 +45,7 @@ def parse(adapter: TypeAdapter, body: bytes) -> Any:
 )
 async def location(request: Request, services: ServicesDep) -> dict:
     body = await bounded_body(request, services.settings.body_bytes)
-    return await publish(services, [parse(ReportAdapter, body)])
+    return await publish(services, [parse(REPORT, body)])
 
 
 @router.post(
@@ -66,7 +59,7 @@ async def location(request: Request, services: ServicesDep) -> dict:
 )
 async def batch(request: Request, services: ServicesDep) -> dict:
     body = await bounded_body(request, services.settings.body_bytes)
-    return await publish(services, parse(batches(services.settings.batch_reports), body))
+    return await publish(services, parse(batch_decoder(services.settings.batch_reports), body))
 
 
 @router.websocket("/ingest")

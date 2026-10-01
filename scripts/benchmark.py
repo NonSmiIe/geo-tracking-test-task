@@ -271,6 +271,14 @@ async def benchmark(args: argparse.Namespace) -> dict:
             values = await asyncio.gather(*map(value, expressions.values()))
             return dict(zip(expressions, values, strict=True))
 
+        async def settle() -> None:
+            for _ in range(180):
+                if await value(TOTALS["consumer_lag"]) == 0:
+                    break
+                await asyncio.sleep(1)
+            await asyncio.sleep(SCRAPE_SETTLE_SECONDS)
+
+        await settle()
         baseline = await read(TOTALS)
         began = time.monotonic()
 
@@ -325,11 +333,7 @@ async def benchmark(args: argparse.Namespace) -> dict:
                         probes=[sorted(viewport_subjects("p", **PROBE, limit=16))],
                     )
                     await injector
-                    for _ in range(180):
-                        if await value(TOTALS["consumer_lag"]) == 0:
-                            break
-                        await asyncio.sleep(1)
-                    await asyncio.sleep(SCRAPE_SETTLE_SECONDS)
+                    await settle()
                 finally:
                     stop.set()
                 observed = await asyncio.gather(*watchers)

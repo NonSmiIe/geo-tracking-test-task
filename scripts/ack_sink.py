@@ -14,14 +14,14 @@ async def handle(socket: ServerConnection) -> None:
         if message == '{"type":"flush"}':
             await socket.send(ACK.format(received))
             continue
-        orjson.loads(message)
-        received += 1
-        if received % 1000 == 0:
+        before = received
+        received += len(orjson.loads(message))
+        if received // 1000 != before // 1000:
             await socket.send(ACK.format(received))
 
 
 async def main(port: int) -> None:
-    async with websockets.serve(handle, "127.0.0.1", port, max_size=4096):
+    async with websockets.serve(handle, "127.0.0.1", port, max_size=65536):
         await asyncio.Future()
 
 

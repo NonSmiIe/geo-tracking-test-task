@@ -92,7 +92,7 @@ class Server:
         self.port = free_port()
         self.server = uvicorn.Server(
             uvicorn.Config(
-                app, host="127.0.0.1", port=self.port, log_level="warning", ws_max_size=4096
+                app, host="127.0.0.1", port=self.port, log_level="warning", ws_max_size=65536
             )
         )
         self.thread = threading.Thread(target=self.server.run, daemon=True)

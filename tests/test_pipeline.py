@@ -152,8 +152,9 @@ def test_viewport_limits_positions_and_follows_retargeting(stack, http) -> None:
 def test_device_websocket_acknowledges_every_report_and_rejects_invalid(stack, http) -> None:
     observer = dashboard(stack, "alice")
     with connect(stack.ingest_url) as device:
-        for index in range(50):
-            device.send(orjson.dumps(report(f"stream-{index}", offset=1)).decode())
+        for start in range(0, 50, 10):
+            frame = [report(f"stream-{index}", offset=1) for index in range(start, start + 10)]
+            device.send(orjson.dumps(frame).decode())
         device.send('{"type":"flush"}')
         acks = 0
         while acks < 50:
@@ -162,11 +163,14 @@ def test_device_websocket_acknowledges_every_report_and_rejects_invalid(stack, h
             acks = message["count"]
         assert acks == 50
     assert len(collect(observer, "positions", 50)) == 50
-    with connect(stack.ingest_url) as device:
-        device.send(orjson.dumps(report(latitude=100)).decode())
-        with pytest.raises(ConnectionClosed) as closed:
-            device.recv(timeout=5)
-        assert closed.value.rcvd.code == 1007
+    for invalid in ([report("half-valid"), report(latitude=100)], [], report("not-a-frame")):
+        with connect(stack.ingest_url) as device:
+            device.send(orjson.dumps(invalid).decode())
+            with pytest.raises(ConnectionClosed) as closed:
+                device.recv(timeout=5)
+            assert closed.value.rcvd.code == 1007
+    silent(observer, "positions", 0.5)
+    assert latest(http, "half-valid") is None
     observer.close()
 
 

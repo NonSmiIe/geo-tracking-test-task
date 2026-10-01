@@ -52,7 +52,7 @@ dashboards ◀─────────── WS /ws ────────�
                                                    └── NATS ◀── pos.<quadkey>, alerts.<user> (after commit)
 ```
 
-**Ingestion is stateless and acknowledged by Kafka.** api replicas validate each report and produce it to Kafka, keyed by `device_id`, with `acks=all` and an idempotent producer. A device WebSocket (`/ingest`) carries one JSON report per message and receives `{"type":"ack","count":n}` frames meaning the first `n` reports sent on that socket are durable, so a device that reconnects resends from report `n`. A `{"type":"flush"}` message returns the count once every in-flight report is durable. `POST /locations` and `POST /locations/batch` return `202` after the broker ack. Each api process has one bounded in-flight window shared by HTTP and sockets, and every socket has its own smaller window. A full window answers HTTP with `503` and `Retry-After`, and stops reading a socket, so TCP backpressure reaches the device. Nothing in the ingest path waits for the database.
+**Ingestion is stateless and acknowledged by Kafka.** api replicas validate each report and produce it to Kafka, keyed by `device_id`, with `acks=all` and an idempotent producer. A device WebSocket (`/ingest`) carries frames: each message is a JSON array of 1–200 reports, decoded and validated in one msgspec pass, and a frame with any invalid report is rejected whole (close `1007`, nothing admitted). Frames exist because a per-message cost (receive, admission, wake-ups) dominated the api at one report per message; each report is still its own Kafka record keyed by `device_id`. The device receives `{"type":"ack","count":n}` frames meaning the first `n` reports sent on that socket are durable, so a device that reconnects resends from report `n`. A `{"type":"flush"}` message returns the count once every in-flight report is durable. `POST /locations` and `POST /locations/batch` return `202` after the broker ack. Each api process has one bounded in-flight window shared by HTTP and sockets, and every socket has its own smaller window. A full window answers HTTP with `503` and `Retry-After`, and stops reading a socket, so TCP backpressure reaches the device. Nothing in the ingest path waits for the database.
 
 **One owner per device, without one process.** Keying by `device_id` puts every report of a device on one partition, and the consumer group gives each partition exactly one processor. That ownership removes the watermark race a shared processor pool would have, and Kafka moves partitions to the survivors when a processor dies. Each processor polls up to 2,000 records and, in one transaction:
 
@@ -86,7 +86,7 @@ After commit the processor publishes to NATS, flushes, and only then commits the
 
 | Interface | Contract |
 | --- | --- |
-| `WS /ingest` | Device stream: one report per message; `ack` frames carry the durable prefix length; `flush` for a final count |
+| `WS /ingest` | Device stream: each message is an array of 1–200 reports; `ack` frames carry the durable prefix length in reports; `{"type":"flush"}` for a final count |
 | `POST /locations` | One `{device_id, latitude, longitude, timestamp}` → `202 {"accepted": 1}` |
 | `POST /locations/batch` | 1–200 reports → `202 {"accepted": n}` |
 | `GET/POST /geozones` | List (keyset pagination) or create this user's zones; quota per user |

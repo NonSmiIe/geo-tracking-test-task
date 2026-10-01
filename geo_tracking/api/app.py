@@ -5,6 +5,7 @@ from functools import partial
 from pathlib import Path
 
 import aiohttp
+import msgspec
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -75,9 +76,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def openapi() -> dict:
         schema = original()
-        schema.setdefault("components", {}).setdefault("schemas", {})["Report"] = (
-            Report.model_json_schema()
+        (_,), components = msgspec.json.schema_components(
+            [Report], ref_template="#/components/schemas/{name}"
         )
+        schema.setdefault("components", {}).setdefault("schemas", {}).update(components)
         return schema
 
     app.openapi = openapi

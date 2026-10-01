@@ -3,15 +3,15 @@ from collections import deque
 from collections.abc import Sequence
 from functools import partial
 
+import msgspec
 import orjson
 from aiokafka import AIOKafkaProducer
 from aiokafka.errors import KafkaError
 from aiokafka.structs import RecordMetadata
-from pydantic import ValidationError
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from geo_tracking.metrics import INGESTED, WINDOW_SIZE, WINDOW_USED
-from geo_tracking.schemas import Report, ReportAdapter
+from geo_tracking.schemas import Flush, Report, frame_decoder
 from geo_tracking.settings import Settings
 
 HTTP_ACCEPTED = INGESTED.labels("http", "accepted")
@@ -133,8 +133,9 @@ class Ingest:
 
     async def stream(self, socket: WebSocket) -> None:
         await socket.accept()
-        own = asyncio.Semaphore(self.settings.ingest_window)
+        own = Window(self.settings.ingest_window)
         acks = Acknowledgements()
+        frames = frame_decoder(self.settings.batch_reports)
 
         def broken() -> None:
             acks.fail()
@@ -143,7 +144,7 @@ class Ingest:
             closer.add_done_callback(self.closers.discard)
 
         def settled(sequence: int, future: asyncio.Future[RecordMetadata]) -> None:
-            own.release()
+            own.release(1)
             self.release(1)
             if future.cancelled() or future.exception() is not None:
                 STREAM_FAILED.inc()
@@ -166,26 +167,27 @@ class Ingest:
         ticker = asyncio.create_task(periodic())
         try:
             while not acks.failed:
-                message = orjson.loads(await socket.receive_text())
-                if isinstance(message, dict) and message.get("type") == "flush":
+                frame = frames.decode(await socket.receive_text())
+                if isinstance(frame, Flush):
                     await acks.idle.wait()
                     if not acks.failed:
                         await acknowledge()
                     continue
-                report = ReportAdapter.validate_python(message)
-                await own.acquire()
-                await self.admit(1)
-                sequence = acks.issue()
-                try:
-                    future = await self.send(report)
-                except KafkaError:
-                    STREAM_FAILED.inc()
-                    own.release()
-                    self.release(1)
-                    broken()
-                    break
-                future.add_done_callback(partial(settled, sequence))
-        except (ValidationError, orjson.JSONDecodeError):
+                await own.acquire(len(frame))
+                await self.admit(len(frame))
+                for index, report in enumerate(frame):
+                    sequence = acks.issue()
+                    try:
+                        future = await self.send(report)
+                    except KafkaError:
+                        unsent = len(frame) - index
+                        STREAM_FAILED.inc(unsent)
+                        own.release(unsent)
+                        self.release(unsent)
+                        broken()
+                        break
+                    future.add_done_callback(partial(settled, sequence))
+        except msgspec.DecodeError:
             STREAM_INVALID.inc()
             await socket.close(code=1007, reason="invalid_report")
         except (WebSocketDisconnect, OSError, RuntimeError):

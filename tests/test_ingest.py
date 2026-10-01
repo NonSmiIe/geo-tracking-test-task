@@ -5,7 +5,7 @@ import pytest
 from aiokafka.errors import KafkaTimeoutError
 
 from geo_tracking.ingest import Acknowledgements, Ingest, Overloaded, Window
-from geo_tracking.schemas import ReportAdapter
+from geo_tracking.schemas import REPORT
 from geo_tracking.settings import Settings
 from tests.helpers import report
 
@@ -64,10 +64,10 @@ async def test_failed_http_produce_returns_its_window(raise_on_send: bool) -> No
     service = ingest(raise_on_send)
     for _ in range(3):
         with pytest.raises(KafkaTimeoutError):
-            await service.publish([ReportAdapter.validate_python(report())] * 4)
+            await service.publish([REPORT.decode(orjson.dumps(report()))] * 4)
     assert service.inflight == 0
     with pytest.raises(Overloaded):
-        await service.publish([ReportAdapter.validate_python(report())] * 5)
+        await service.publish([REPORT.decode(orjson.dumps(report()))] * 5)
 
 
 @pytest.mark.parametrize("raise_on_send", [True, False])
@@ -75,7 +75,7 @@ async def test_failed_stream_produce_closes_the_socket_and_returns_the_window(
     raise_on_send: bool,
 ) -> None:
     service = ingest(raise_on_send)
-    socket = DeviceSocket([orjson.dumps(report()).decode(), '{"type":"flush"}'])
+    socket = DeviceSocket([orjson.dumps([report(), report(offset=1)]).decode(), '{"type":"flush"}'])
     await asyncio.wait_for(service.stream(socket), 2)
     await asyncio.sleep(0)
     assert socket.closed == 1011 and service.inflight == 0

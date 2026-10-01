@@ -7,6 +7,7 @@ import os
 import random
 import time
 from collections import Counter, deque
+from collections.abc import Sequence
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -27,6 +28,10 @@ DRAIN_SECONDS = 120
 
 class LaneLost(Exception):
     pass
+
+
+def frame(items: Sequence[str]) -> str:
+    return "[" + ",".join(items) + "]"
 
 
 def fingerprint(device_id: str, timestamp_us: int) -> int:
@@ -82,7 +87,7 @@ class Config:
     connections: int = 8
     transport: str = "ws"
     concurrency: int = 64
-    batch_size: int = 1
+    batch_size: int = 100
     queue_size: int = 8192
     seed: int = 42
     latitude: float = 56.9496
@@ -192,16 +197,21 @@ async def produce(config: Config, index: int, probes: list[list[str]]) -> Shard:
                     reader = asyncio.create_task(acknowledged(socket, state))
                     try:
                         shard.counters["resent"] += len(state.pending)
-                        for message in tuple(state.pending):
-                            await socket.send(message)
+                        unsent = tuple(state.pending)
+                        for start in range(0, len(unsent), config.batch_size):
+                            await socket.send(frame(unsent[start : start + config.batch_size]))
                         while not state.drained:
-                            message = await lane.get()
-                            if message is None:
+                            items = [await lane.get()]
+                            while len(items) < config.batch_size and not lane.empty():
+                                items.append(lane.get_nowait())
+                            if items[-1] is None:
                                 state.drained = True
+                                items.pop()
+                            if not items:
                                 break
-                            state.pending.append(message)
-                            shard.counters["sent"] += 1
-                            await socket.send(message)
+                            state.pending.extend(items)
+                            shard.counters["sent"] += len(items)
+                            await socket.send(frame(items))
                         await socket.send('{"type":"flush"}')
                         await asyncio.wait_for(reader, 60)
                         return
@@ -399,8 +409,8 @@ def arguments() -> argparse.Namespace:
     positive = (args.devices, args.interval, args.duration, args.processes, args.connections)
     if min(*positive, args.concurrency, args.batch_size, args.queue_size) <= 0:
         parser.error("counts, interval and duration must be positive")
-    if args.batch_size > 200 or (args.batch_size > 1 and args.transport != "http"):
-        parser.error("batch-size is at most 200 and only applies to the HTTP transport")
+    if args.batch_size > 200:
+        parser.error("batch-size is at most 200, the server's frame and batch limit")
     if not -89 <= args.latitude <= 89 or not -180 <= args.longitude <= 180:
         parser.error("latitude must be -89..89 and longitude -180..180")
     return args

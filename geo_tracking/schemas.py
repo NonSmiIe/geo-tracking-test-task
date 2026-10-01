@@ -1,12 +1,15 @@
 from datetime import UTC, datetime, timedelta
+from functools import cache
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
+import msgspec
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 Latitude = Annotated[float, Field(ge=-90, le=90, allow_inf_nan=False)]
 Longitude = Annotated[float, Field(ge=-180, le=180, allow_inf_nan=False)]
 Radius = Annotated[float, Field(gt=0, allow_inf_nan=False)]
-Identifier = Annotated[str, Field(min_length=1, max_length=96, pattern=r"^[\w.-]+$")]
+IDENTIFIER = r"^[\w.-]+$"
+Identifier = Annotated[str, Field(min_length=1, max_length=96, pattern=IDENTIFIER)]
 
 EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 CLOCK_SKEW = timedelta(minutes=5)
@@ -17,32 +20,39 @@ def microseconds(value: datetime) -> int:
     return (delta.days * 86400 + delta.seconds) * 1_000_000 + delta.microseconds
 
 
-class Report(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    device_id: Identifier
-    latitude: Latitude
-    longitude: Longitude
-    timestamp: datetime
+class Report(msgspec.Struct, forbid_unknown_fields=True, frozen=True):
+    device_id: Annotated[str, msgspec.Meta(min_length=1, max_length=96, pattern=r"^[\w.-]+\Z")]
+    latitude: Annotated[float, msgspec.Meta(ge=-90, le=90)]
+    longitude: Annotated[float, msgspec.Meta(ge=-180, le=180)]
+    timestamp: Annotated[datetime, msgspec.Meta(tz=True)]
 
-    @field_validator("timestamp")
-    @classmethod
-    def utc_timestamp(cls, value: datetime) -> datetime:
-        if value.tzinfo is None or value.utcoffset() is None:
-            raise ValueError("timestamp requires a timezone")
-        value = value.astimezone(UTC)
-        if value > datetime.now(UTC) + CLOCK_SKEW:
+    def __post_init__(self) -> None:
+        if self.timestamp > datetime.now(UTC) + CLOCK_SKEW:
             raise ValueError("timestamp is in the future")
-        return value
 
     def record(self) -> list:
         return [self.device_id, self.latitude, self.longitude, microseconds(self.timestamp)]
 
 
-ReportAdapter = TypeAdapter(Report)
+class Flush(msgspec.Struct, tag_field="type", tag="flush", forbid_unknown_fields=True):
+    pass
 
 
-def batch_adapter(limit: int) -> TypeAdapter:
-    return TypeAdapter(Annotated[list[Report], Field(min_length=1, max_length=limit)])
+def reports(limit: int) -> type:
+    return Annotated[list[Report], msgspec.Meta(min_length=1, max_length=limit)]
+
+
+REPORT = msgspec.json.Decoder(Report)
+
+
+@cache
+def batch_decoder(limit: int) -> msgspec.json.Decoder:
+    return msgspec.json.Decoder(reports(limit))
+
+
+@cache
+def frame_decoder(limit: int) -> msgspec.json.Decoder:
+    return msgspec.json.Decoder(reports(limit) | Flush)
 
 
 class ZoneCreate(BaseModel):
