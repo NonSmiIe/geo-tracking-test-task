@@ -3,39 +3,61 @@ import asyncio
 import hashlib
 import heapq
 import math
+import os
 import random
+import time
 from collections import Counter
-from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from concurrent.futures import ProcessPoolExecutor
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
-from time import monotonic
 from uuid import uuid4
 
 import aiohttp
 import orjson
+import websockets
+
+from geo_tracking.tiles import position_subject
+
+EARTH_RADIUS = 6371008.8
 
 
-def fingerprint(report):
-    timestamp = datetime.fromisoformat(report["timestamp"]).isoformat(timespec="microseconds")
-    data = f"{report['device_id']}|{timestamp}".encode()
+def fingerprint(device_id: str, timestamp_us: int) -> int:
+    data = f"{device_id}|{timestamp_us}".encode()
     return int.from_bytes(hashlib.blake2b(data, digest_size=8).digest(), "big")
+
+
+def iso(timestamp_us: int) -> str:
+    seconds, micros = divmod(timestamp_us, 1_000_000)
+    return datetime.fromtimestamp(seconds, UTC).replace(microsecond=micros).isoformat()
+
+
+def matches(patterns: list[str], subject: str) -> bool:
+    return any(
+        subject.startswith(pattern[:-1]) if pattern.endswith(">") else subject == pattern
+        for pattern in patterns
+    )
 
 
 @dataclass
 class Histogram:
     buckets: Counter = field(default_factory=Counter)
 
-    def add(self, seconds):
+    def add(self, seconds: float) -> None:
         self.buckets[min(100000, max(0, math.ceil(seconds * 1000)))] += 1
 
-    def summary(self):
+    def merge(self, other: "Histogram") -> None:
+        self.buckets.update(other.buckets)
+
+    def summary(self) -> dict:
         total = sum(self.buckets.values())
         if not total:
             return {"count": 0}
         result = {"count": total, "max_ms": max(self.buckets)}
+        ordered = sorted(self.buckets.items())
         for name, fraction in (("p50_ms", 0.5), ("p95_ms", 0.95), ("p99_ms", 0.99)):
             cumulative = 0
-            for bucket, count in sorted(self.buckets.items()):
+            for bucket, count in ordered:
                 cumulative += count
                 if cumulative >= math.ceil(total * fraction):
                     result[name] = bucket
@@ -49,193 +71,296 @@ class Config:
     devices: int = 10000
     interval: float = 5
     duration: float = 60
-    concurrency: int = 256
-    queue_size: int = 4096
+    processes: int = max(1, min(8, (os.cpu_count() or 2) // 2))
+    connections: int = 8
+    transport: str = "ws"
+    concurrency: int = 64
     batch_size: int = 1
-    retries: int = 0
+    queue_size: int = 8192
     seed: int = 42
     latitude: float = 56.9496
     longitude: float = 24.1052
+    spread_km: float = 150
     synchronized: bool = False
     prefix: str = field(default_factory=lambda: f"run-{uuid4().hex[:8]}")
+    start_at: float = 0
 
 
 @dataclass
-class Stats:
+class Shard:
     counters: Counter = field(default_factory=Counter)
-    latency: Histogram = field(default_factory=Histogram)
     schedule_lag: Histogram = field(default_factory=Histogram)
-    accepted_checksum: int = 0
-    started: float = 0
-
-    def snapshot(self):
-        elapsed = monotonic() - self.started
-        return {
-            "elapsed_seconds": elapsed,
-            "counters": dict(self.counters),
-            "accepted_reports_per_second": self.counters["accepted"] / max(0.001, elapsed),
-            "http_latency": self.latency.summary(),
-            "schedule_lag": self.schedule_lag.summary(),
-            "accepted_checksum": str(self.accepted_checksum),
-        }
+    latency: Histogram = field(default_factory=Histogram)
+    checksum: int = 0
+    probes: list[list[int]] = field(default_factory=list)
 
 
-async def run(config: Config, on_accepted=None):
-    rng = random.Random(config.seed)
-    coordinates = [
-        (
-            config.latitude + rng.uniform(-0.008, 0.008),
-            config.longitude + rng.uniform(-0.008, 0.008),
+class Fleet:
+    def __init__(self, config: Config, index: int):
+        self.config = config
+        count, rest = divmod(config.devices, config.processes)
+        self.first = index * count + min(index, rest)
+        self.size = count + (index < rest)
+        self.rng = random.Random(config.seed * 1000 + index)
+        self.positions = []
+        for _ in range(self.size):
+            distance = config.spread_km * 1000 * math.sqrt(self.rng.random())
+            bearing = self.rng.uniform(0, 2 * math.pi)
+            self.positions.append(
+                [
+                    *self.move(config.latitude, config.longitude, bearing, distance),
+                    self.rng.uniform(0, 2 * math.pi),
+                    self.rng.uniform(4, 25),
+                ]
+            )
+
+    @staticmethod
+    def move(latitude: float, longitude: float, bearing: float, distance: float) -> tuple:
+        angle = distance / EARTH_RADIUS
+        lat1, lon1 = math.radians(latitude), math.radians(longitude)
+        lat2 = math.asin(
+            math.sin(lat1) * math.cos(angle) + math.cos(lat1) * math.sin(angle) * math.cos(bearing)
         )
-        for _ in range(config.devices)
-    ]
+        lon2 = lon1 + math.atan2(
+            math.sin(bearing) * math.sin(angle) * math.cos(lat1),
+            math.cos(angle) - math.sin(lat1) * math.sin(lat2),
+        )
+        return math.degrees(lat2), (math.degrees(lon2) + 540) % 360 - 180
+
+    def step(self, local: int) -> tuple[float, float]:
+        state = self.positions[local]
+        state[2] += self.rng.gauss(0, math.radians(20))
+        state[3] = min(30, max(0, state[3] + self.rng.gauss(0, 1.5)))
+        state[0], state[1] = self.move(
+            state[0], state[1], state[2], state[3] * self.config.interval
+        )
+        state[0] = max(-89.9, min(89.9, state[0]))
+        return state[0], state[1]
+
+    def device_id(self, local: int) -> str:
+        return f"{self.config.prefix}-{self.first + local:07d}"
+
+
+async def produce(config: Config, index: int, probes: list[list[str]]) -> Shard:
+    fleet = Fleet(config, index)
+    shard = Shard(probes=[[0, 0] for _ in probes])
+    rng = random.Random(config.seed * 7919 + index)
     schedule = [
-        (0 if config.synchronized else rng.uniform(0, config.interval), device)
-        for device in range(config.devices)
+        (0.0 if config.synchronized else rng.uniform(0, config.interval), local)
+        for local in range(fleet.size)
     ]
     heapq.heapify(schedule)
-    queue = asyncio.Queue(maxsize=config.queue_size)
-    stats = Stats(started=monotonic())
-    stats.counters["expected_scheduled"] = sum(
+    shard.counters["expected_scheduled"] = sum(
         max(0, math.ceil((config.duration - phase) / config.interval)) for phase, _ in schedule
     )
-    wall_start = datetime.now(UTC)
+    lanes = config.connections if config.transport == "ws" else 1
+    queues = [asyncio.Queue(maxsize=max(1, config.queue_size // lanes)) for _ in range(lanes)]
 
-    async def worker(client):
-        while True:
-            items = [await queue.get()]
-            while len(items) < config.batch_size and not queue.empty():
-                items.append(queue.get_nowait())
-            payload = items[0] if config.batch_size == 1 else items
-            body = orjson.dumps(payload)
-            path = "/locations" if config.batch_size == 1 else "/locations/batch"
+    async def stream(lane: asyncio.Queue) -> None:
+        url = config.url.replace("http", "ws", 1) + "/ingest"
+        sent = 0
+        acked = 0
+        done = asyncio.Event()
+        async with websockets.connect(url, max_queue=None, write_limit=1 << 20) as socket:
+
+            async def acks() -> None:
+                nonlocal acked
+                async for data in socket:
+                    acked = orjson.loads(data)["count"]
+                    if done.is_set() and acked >= sent:
+                        return
+
+            reader = asyncio.create_task(acks())
             try:
-                for attempt in range(config.retries + 1):
-                    stats.counters["attempted"] += len(items)
-                    started = monotonic()
-                    try:
-                        async with client.post(
-                            config.url + path,
-                            data=body,
-                            headers={"Content-Type": "application/json"},
-                        ) as response:
-                            result = await response.json()
-                            stats.latency.add(monotonic() - started)
-                            if response.status == 200:
-                                for report, status in zip(items, result["statuses"], strict=True):
-                                    stats.counters[status] += 1
-                                    if status == "accepted":
-                                        stats.accepted_checksum = (
-                                            stats.accepted_checksum + fingerprint(report)
-                                        ) % (1 << 64)
-                                        if on_accepted:
-                                            on_accepted(report)
-                                break
-                            stats.counters[f"http_{response.status}"] += len(items)
-                            if response.status != 503 or attempt == config.retries:
-                                stats.counters["rejected"] += len(items)
-                                break
-                    except (aiohttp.ClientError, TimeoutError):
-                        stats.counters["transport_errors"] += len(items)
-                        if attempt == config.retries:
-                            stats.counters["failed"] += len(items)
-                            break
-                    stats.counters["retried"] += len(items)
-                    await asyncio.sleep(0.05 * (attempt + 1))
+                while (message := await lane.get()) is not None:
+                    await socket.send(message)
+                    sent += 1
+                done.set()
+                await socket.send('{"type":"flush"}')
+                await asyncio.wait_for(reader, 60)
+            except (TimeoutError, websockets.ConnectionClosed, OSError):
+                shard.counters["transport_errors"] += 1
             finally:
-                for _ in items:
-                    queue.task_done()
+                reader.cancel()
+                shard.counters["sent"] += sent
+                shard.counters["acked"] += acked
 
-    async def progress():
+    async def post(lane: asyncio.Queue, client: aiohttp.ClientSession) -> None:
         while True:
-            await asyncio.sleep(5)
-            print(orjson.dumps(stats.snapshot()).decode(), flush=True)
-
-    connector = aiohttp.TCPConnector(limit=config.concurrency)
-    async with aiohttp.ClientSession(
-        connector=connector, timeout=aiohttp.ClientTimeout(total=10)
-    ) as client:
-        workers = [asyncio.create_task(worker(client)) for _ in range(config.concurrency)]
-        progress_task = asyncio.create_task(progress())
-        try:
-            iterations = 0
-            while schedule:
-                due, device = heapq.heappop(schedule)
-                if due >= config.duration:
+            first = await lane.get()
+            if first is None:
+                await lane.put(None)
+                return
+            items = [first]
+            while len(items) < config.batch_size and not lane.empty():
+                item = lane.get_nowait()
+                if item is None:
+                    await lane.put(None)
                     break
-                remaining = stats.started + due - monotonic()
-                if remaining > 0:
-                    await asyncio.sleep(remaining)
-                lag = monotonic() - stats.started - due
-                stats.schedule_lag.add(lag)
-                if lag > 0.1:
-                    stats.counters["late_over_100ms"] += 1
-                latitude, longitude = coordinates[device]
-                latitude = max(-89.9, min(89.9, latitude + rng.uniform(-10, 10) / 111320))
-                longitude += rng.uniform(-10, 10) / (111320 * math.cos(math.radians(latitude)))
-                longitude = (longitude + 180) % 360 - 180
-                coordinates[device] = latitude, longitude
-                report = {
-                    "device_id": f"{config.prefix}-{device:05d}",
+                items.append(item)
+            path, body = (
+                ("/locations", items[0])
+                if config.batch_size == 1
+                else ("/locations/batch", b"[" + b",".join(items) + b"]")
+            )
+            shard.counters["sent"] += len(items)
+            started = time.monotonic()
+            try:
+                async with client.post(
+                    config.url + path, data=body, headers={"Content-Type": "application/json"}
+                ) as response:
+                    await response.read()
+                    shard.latency.add(time.monotonic() - started)
+                    if response.status == 202:
+                        shard.counters["acked"] += len(items)
+                    else:
+                        shard.counters[f"http_{response.status}"] += len(items)
+                        shard.counters["rejected"] += len(items)
+            except (aiohttp.ClientError, TimeoutError):
+                shard.counters["transport_errors"] += len(items)
+
+    async def schedule_reports() -> None:
+        iterations = 0
+        while schedule:
+            due, local = heapq.heappop(schedule)
+            if due >= config.duration:
+                break
+            remaining = config.start_at + due - time.time()
+            if remaining > 0:
+                await asyncio.sleep(remaining)
+            lag = time.time() - config.start_at - due
+            shard.schedule_lag.add(lag)
+            if lag > 0.1:
+                shard.counters["late_over_100ms"] += 1
+            latitude, longitude = fleet.step(local)
+            device_id = fleet.device_id(local)
+            timestamp = int((config.start_at + due) * 1_000_000)
+            message = orjson.dumps(
+                {
+                    "device_id": device_id,
                     "latitude": latitude,
                     "longitude": longitude,
-                    "timestamp": (wall_start + timedelta(seconds=due)).isoformat(),
+                    "timestamp": iso(timestamp),
                 }
-                stats.counters["scheduled"] += 1
-                try:
-                    queue.put_nowait(report)
-                except asyncio.QueueFull:
-                    stats.counters["generator_dropped"] += 1
-                stats.counters["queue_high_water"] = max(
-                    stats.counters["queue_high_water"], queue.qsize()
-                )
-                heapq.heappush(schedule, (due + config.interval, device))
-                iterations += 1
-                if iterations % 100 == 0:
-                    await asyncio.sleep(0)
-            await asyncio.wait_for(queue.join(), 30)
-        finally:
-            for task in [*workers, progress_task]:
-                task.cancel()
-            await asyncio.gather(*workers, progress_task, return_exceptions=True)
-    result = stats.snapshot()
-    result["configuration"] = vars(config)
-    return result
+            )
+            shard.counters["scheduled"] += 1
+            lane = queues[local % lanes]
+            try:
+                lane.put_nowait(message if config.transport == "http" else message.decode())
+            except asyncio.QueueFull:
+                shard.counters["generator_dropped"] += 1
+            else:
+                mark = fingerprint(device_id, timestamp)
+                shard.checksum = (shard.checksum + mark) % (1 << 64)
+                if probes:
+                    subject = position_subject("p", latitude, longitude)
+                    for slot, patterns in zip(shard.probes, probes, strict=True):
+                        if matches(patterns, subject):
+                            slot[0] += 1
+                            slot[1] = (slot[1] + mark) % (1 << 64)
+            shard.counters["queue_high_water"] = max(
+                shard.counters["queue_high_water"], lane.qsize()
+            )
+            heapq.heappush(schedule, (due + config.interval, local))
+            iterations += 1
+            if iterations % 200 == 0:
+                await asyncio.sleep(0)
+
+    if config.transport == "ws":
+        senders = [asyncio.create_task(stream(lane)) for lane in queues]
+        await schedule_reports()
+        for lane in queues:
+            await lane.put(None)
+        await asyncio.gather(*senders)
+    else:
+        connector = aiohttp.TCPConnector(limit=config.concurrency)
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(connector=connector, timeout=timeout) as client:
+            senders = [
+                asyncio.create_task(post(queues[0], client)) for _ in range(config.concurrency)
+            ]
+            await schedule_reports()
+            await queues[0].put(None)
+            await asyncio.gather(*senders)
+    return shard
 
 
-def arguments():
+def shard_main(config: Config, index: int, probes: list[list[str]]) -> dict:
+    shard = asyncio.run(produce(config, index, probes))
+    return {
+        "counters": dict(shard.counters),
+        "schedule_lag": dict(shard.schedule_lag.buckets),
+        "latency": dict(shard.latency.buckets),
+        "checksum": shard.checksum,
+        "probes": shard.probes,
+    }
+
+
+async def run(config: Config, probes: list[list[str]] | None = None) -> dict:
+    probes = probes or []
+    config.start_at = config.start_at or time.time() + 3
+    loop = asyncio.get_running_loop()
+    with ProcessPoolExecutor(config.processes) as pool:
+        shards = await asyncio.gather(
+            *[
+                loop.run_in_executor(pool, shard_main, config, index, probes)
+                for index in range(config.processes)
+            ]
+        )
+    counters, lag, latency, checksum = Counter(), Histogram(), Histogram(), 0
+    totals = [[0, 0] for _ in probes]
+    for shard in shards:
+        high = shard["counters"].pop("queue_high_water", 0)
+        counters.update(shard["counters"])
+        counters["queue_high_water"] = max(counters["queue_high_water"], high)
+        lag.merge(Histogram(Counter({int(k): v for k, v in shard["schedule_lag"].items()})))
+        latency.merge(Histogram(Counter({int(k): v for k, v in shard["latency"].items()})))
+        checksum = (checksum + shard["checksum"]) % (1 << 64)
+        for total, (count, mark) in zip(totals, shard["probes"], strict=True):
+            total[0] += count
+            total[1] = (total[1] + mark) % (1 << 64)
+    duration = time.time() - config.start_at
+    return {
+        "configuration": asdict(config),
+        "counters": dict(counters),
+        "elapsed_seconds": duration,
+        "acked_reports_per_second": counters["acked"] / max(0.001, duration),
+        "offered_reports_per_second": config.devices / config.interval,
+        "schedule_lag": lag.summary(),
+        "http_latency": latency.summary(),
+        "checksum": str(checksum),
+        "probes": [{"count": count, "checksum": str(mark)} for count, mark in totals],
+    }
+
+
+def arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Open-loop moving-device load generator")
-    parser.add_argument("--url", default="http://127.0.0.1:8097")
-    parser.add_argument("--devices", type=int, default=10000)
-    parser.add_argument("--interval", type=float, default=5)
-    parser.add_argument("--duration", type=float, default=60)
-    parser.add_argument("--concurrency", type=int, default=256)
-    parser.add_argument("--queue-size", type=int, default=4096)
-    parser.add_argument("--batch-size", type=int, default=1)
-    parser.add_argument("--retries", type=int, default=0)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--latitude", type=float, default=56.9496)
-    parser.add_argument("--longitude", type=float, default=24.1052)
+    defaults = Config()
+    parser.add_argument("--url", default=defaults.url)
+    parser.add_argument("--devices", type=int, default=defaults.devices)
+    parser.add_argument("--interval", type=float, default=defaults.interval)
+    parser.add_argument("--duration", type=float, default=defaults.duration)
+    parser.add_argument("--processes", type=int, default=defaults.processes)
+    parser.add_argument("--connections", type=int, default=defaults.connections)
+    parser.add_argument("--transport", choices=("ws", "http"), default=defaults.transport)
+    parser.add_argument("--concurrency", type=int, default=defaults.concurrency)
+    parser.add_argument("--batch-size", type=int, default=defaults.batch_size)
+    parser.add_argument("--queue-size", type=int, default=defaults.queue_size)
+    parser.add_argument("--seed", type=int, default=defaults.seed)
+    parser.add_argument("--latitude", type=float, default=defaults.latitude)
+    parser.add_argument("--longitude", type=float, default=defaults.longitude)
+    parser.add_argument("--spread-km", type=float, default=defaults.spread_km)
     parser.add_argument("--synchronized", action="store_true")
-    parser.add_argument("--prefix", default=f"run-{uuid4().hex[:8]}")
+    parser.add_argument("--prefix", default=defaults.prefix)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    if (
-        min(
-            args.devices,
-            args.interval,
-            args.duration,
-            args.concurrency,
-            args.queue_size,
-            args.batch_size,
-        )
-        <= 0
-    ):
+    positive = (args.devices, args.interval, args.duration, args.processes, args.connections)
+    if min(*positive, args.concurrency, args.batch_size, args.queue_size) <= 0:
         parser.error("counts, interval and duration must be positive")
-    if args.retries < 0 or args.batch_size > 200:
-        parser.error("retries must be nonnegative and batch-size at most 200")
-    if not -89.8 <= args.latitude <= 89.8 or not -180 <= args.longitude <= 180:
-        parser.error("latitude must be -89.8..89.8 and longitude -180..180")
+    if args.batch_size > 200 or (args.batch_size > 1 and args.transport != "http"):
+        parser.error("batch-size is at most 200 and only applies to the HTTP transport")
+    if not -89 <= args.latitude <= 89 or not -180 <= args.longitude <= 180:
+        parser.error("latitude must be -89..89 and longitude -180..180")
     return args
 
 
