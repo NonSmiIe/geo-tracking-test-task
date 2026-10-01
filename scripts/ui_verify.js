@@ -48,8 +48,8 @@ async (page) => {
       const response = await page.request.post(`${origin}/locations`, { data: { device_id: device, latitude, longitude: 25.5, timestamp: `${prefix}.${suffix}Z` } });
       if (response.status() !== 202) throw new Error(`Report failed: ${response.status()}`);
     }
-    await page.waitForFunction((id) => alertFeed.filter((item) => item.device_id === id).length === 2, device);
-    await second.waitForFunction((id) => alertFeed.filter((item) => item.device_id === id).length === 2, device);
+    await page.waitForFunction((id) => [...alertFeed.values()].some((group) => group.device_id === id && group.reports === 2), device);
+    await second.waitForFunction((id) => [...alertFeed.values()].some((group) => group.device_id === id && group.reports === 2), device);
     await page.waitForFunction((id) => positions.get(id)?.latitude === 57.5002, device);
     results.owner_sessions_receive_alerts = true;
     results.microsecond_ordering = await page.evaluate((id) => ({ latitude: positions.get(id).latitude, timestamp: positions.get(id).timestamp }), device);

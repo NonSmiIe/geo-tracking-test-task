@@ -9,7 +9,9 @@ let currentView = 'fleet', zonesVisible = true, alertTotal = 0, unread = 0, rece
 let fleetDirty = true, alertsDirty = false, insightLoadId = 0, zoneLoadId = 0, snapshotController, errorTimer;
 let demoPrefix = null, demoRunning = false;
 const deviceName = (id) => demoPrefix && id.startsWith(demoPrefix) ? `Машина ${id.slice(demoPrefix.length)}` : id;
-const positions = new Map(), zones = new Map(), alertFeed = [], pendingPositions = new Map();
+const positions = new Map(), zones = new Map(), alertFeed = new Map(), pendingPositions = new Map();
+const EPISODE_GAP_MS = 30000, FEED_LIMIT = 80;
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const map = L.map('map', { preferCanvas: true, zoomControl: false, attributionControl: false }).setView([56.9496, 24.1052], 13);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 L.control.scale({ position: 'bottomleft', imperial: false }).addTo(map);
@@ -224,28 +226,53 @@ function switchView(view) {
   if (view === 'brief') loadInsights();
 }
 document.querySelectorAll('[data-view]').forEach((button) => { button.onclick = () => switchView(button.dataset.view); });
+function pulseZone(zoneId) {
+  const entry = zones.get(zoneId);
+  if (!entry || reducedMotion.matches || !zonesVisible) return;
+  entry.circle.setStyle({ weight: 4, fillOpacity: .22 });
+  setTimeout(() => entry.circle.setStyle({ weight: 1.5, fillOpacity: entry.zone.active ? .09 : .025 }), 220);
+}
 function receiveAlerts(items) {
   items = items.map((item) => ({ ...item, timestamp: isoTime(item.timestamp) }));
   if (demoPrefix) items = items.filter((item) => item.device_id.startsWith(demoPrefix));
   alertTotal += items.length;
-  if (currentView !== 'activity') unread += items.length;
-  alertFeed.unshift(...items.slice(-80).reverse()); alertFeed.length = Math.min(alertFeed.length, 80);
+  for (const item of items) {
+    const key = `${item.device_id}|${item.zone_id}`, at = Date.parse(item.timestamp), group = alertFeed.get(key);
+    if (group && at - group.last < EPISODE_GAP_MS) {
+      group.last = Math.max(group.last, at); group.reports++; alertFeed.delete(key); alertFeed.set(key, group);
+      continue;
+    }
+    alertFeed.delete(key);
+    alertFeed.set(key, { device_id: item.device_id, zone_id: item.zone_id, first: at, last: at, reports: 1, fresh: true });
+    if (currentView !== 'activity') unread++;
+    pulseZone(item.zone_id);
+  }
+  while (alertFeed.size > FEED_LIMIT) alertFeed.delete(alertFeed.keys().next().value);
   $('alert-count').textContent = count(alertTotal);
   $('activity-badge').textContent = unread > 99 ? '99+' : count(unread); $('activity-badge').hidden = !unread;
   alertsDirty = true;
 }
 setInterval(() => { if (alertsDirty && currentView === 'activity') renderAlerts(); }, 350);
+const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function alertText(group) {
+  const zoneName = zones.get(group.zone_id)?.zone.name || (demoPrefix ? 'Склад' : 'geofence');
+  if (demoPrefix) return [`${deviceName(group.device_id)} въехала в зону «${zoneName}» · ${clock(group.first)}`, `внутри с ${clock(group.first)} · ${count(group.reports)} отчётов`];
+  return [`${deviceName(group.device_id)} entered ${zoneName} · ${clock(group.first)}`, `inside since ${clock(group.first)} · ${count(group.reports)} report${group.reports === 1 ? '' : 's'}`];
+}
 function renderAlerts() {
   alertsDirty = false;
-  const rows = alertFeed.map((item) => {
-    const row = element('div', undefined, 'alert-row'), symbol = element('span', undefined, 'alert-symbol'), content = element('div');
-    symbol.append(icon('zone')); content.append(element('strong', deviceName(item.device_id)), element('p', demoPrefix ? 'Машина сейчас внутри круга склада' : `Inside ${zones.get(item.zone_id)?.zone.name || 'geofence'} · version ${item.zone_version}`));
-    const time = element('time', new Date(item.timestamp).toLocaleTimeString()); time.dateTime = item.timestamp; content.append(time); row.append(symbol, content); return row;
+  const rows = [...alertFeed.values()].reverse().map((group) => {
+    const row = element('div', undefined, `alert-row${group.fresh ? ' fresh' : ''}`), symbol = element('span', undefined, 'alert-symbol'), content = element('div');
+    const [title, detail] = alertText(group);
+    symbol.append(icon('zone')); content.append(element('strong', title), element('p', detail));
+    const time = element('time', `last ${new Date(group.last).toLocaleTimeString()}`); time.dateTime = new Date(group.last).toISOString(); content.append(time); row.append(symbol, content);
+    group.fresh = false;
+    return row;
   });
-  if (!rows.length) { const empty = element('div', undefined, 'empty-state'); empty.append(icon('activity'), element('h3', 'Nothing has crossed your radar yet'), element('p', 'Fresh reports inside your active geofences appear here, in every connected session.')); rows.push(empty); }
+  if (!rows.length) { const empty = element('div', undefined, 'empty-state'); empty.append(icon('activity'), element('h3', 'Nothing has crossed your radar yet'), element('p', 'When a device reports from inside one of your geofences, it appears here once and keeps counting while it stays inside.')); rows.push(empty); }
   $('alerts').replaceChildren(...rows);
 }
-$('clear-alerts').onclick = () => { alertFeed.length = 0; unread = 0; $('activity-badge').hidden = true; renderAlerts(); };
+$('clear-alerts').onclick = () => { alertFeed.clear(); unread = 0; $('activity-badge').hidden = true; renderAlerts(); };
 
 async function loadZones(version = epoch, who = user, ws = socket) {
   const loadId = ++zoneLoadId, result = [];
@@ -395,7 +422,7 @@ $('identity').onsubmit = (event) => {
   event.preventDefault(); const next = $('user').value.trim(); if (!next || next === user) { $('identity-panel').hidden = true; return; }
   demoPrefix = null; demoRunning = false; $('demo-all').hidden = true;
   user = next; epoch++; socket?.close(); snapshotController?.abort(); resetEdit();
-  zoneLoadId++; alertTotal = 0; unread = 0; alertFeed.length = 0; pendingPositions.clear();
+  zoneLoadId++; alertTotal = 0; unread = 0; alertFeed.clear(); pendingPositions.clear();
   $('alert-count').textContent = '0'; $('activity-badge').hidden = true; renderAlerts();
   for (const entry of zones.values()) map.removeLayer(entry.circle); zones.clear(); renderZones(); $('zone-count').textContent = '0';
   $('insights').replaceChildren(element('p', 'Loading the latest picture…', 'view-description')); $('save-zone').disabled = false;
@@ -427,7 +454,7 @@ function enterDemo(state) {
   demoPrefix = state.device_prefix;
   positions.clear(); pendingPositions.clear(); selectedId = null; following = false;
   $('inspector').hidden = true; $('device-count').textContent = '0';
-  alertFeed.length = 0; alertTotal = 0; unread = 0; $('alert-count').textContent = '0';
+  alertFeed.clear(); alertTotal = 0; unread = 0; $('alert-count').textContent = '0';
   $('activity-badge').hidden = true; $('fleet-search').value = ''; $('fleet-filter').value = 'all';
   fleetDirty = true; renderAlerts(); fleetCanvas.redraw();
   $('demo-all').hidden = false;

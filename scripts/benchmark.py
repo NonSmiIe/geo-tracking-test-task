@@ -22,6 +22,14 @@ WORLD = {"south": -90, "west": -180, "north": 90, "east": 180}
 PROBE = {"south": 56.8, "west": 23.8, "north": 57.1, "east": 24.4}
 
 
+def fault(value: str) -> str:
+    at, action, container = value.split(":", 2)
+    float(at)
+    if not action or not container:
+        raise argparse.ArgumentTypeError("expected SECONDS:docker-action:container")
+    return value
+
+
 def observe(url: str, user: str, viewport: dict, prefix: str, ready, stop) -> dict:
     async def main() -> dict:
         counts, checksums = Counter(), Counter()
@@ -246,9 +254,14 @@ async def benchmark(args: argparse.Namespace) -> dict:
     pipeline = assess_pipeline(acked, baseline, final)
     resources = assess_resources(samples)
     reconciled = all(item["passed"] for item in delivery)
+    faults_applied = all(item["exit_code"] == 0 for item in faults) and len(faults) == len(
+        args.fault
+    )
     return {
         "acceptance_policy": POLICY,
-        "acceptance_passed": workload["passed"]
+        "faults_applied": faults_applied,
+        "acceptance_passed": faults_applied
+        and workload["passed"]
         and pipeline["passed"]
         and reconciled
         and latency_passed
@@ -295,6 +308,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--fault",
         action="append",
+        type=fault,
         default=[],
         help="SECONDS:docker-action:container, e.g. 60:kill:geo-tracking-test-task-processor-2",
     )

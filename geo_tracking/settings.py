@@ -22,11 +22,13 @@ class Settings(BaseSettings):
     batch_reports: int = Field(default=200, ge=1, le=1000)
     produce_window: int = Field(default=8192, ge=1)
     ingest_window: int = Field(default=1024, ge=1)
+    admission_timeout_seconds: float = Field(default=1, gt=0)
     ack_interval_seconds: float = Field(default=0.2, gt=0)
 
     processor_batch: int = Field(default=2000, ge=1)
     processor_poll_ms: int = Field(default=50, ge=1)
     processor_retry_seconds: float = Field(default=1, gt=0)
+    publish_deadline_seconds: float = Field(default=120, gt=0)
     alert_frame_items: int = Field(default=1000, ge=1)
 
     max_zones_per_user: int = Field(default=1000, ge=1)

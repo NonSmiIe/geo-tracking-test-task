@@ -1,11 +1,13 @@
 import asyncio
+import contextlib
 import logging
+import signal
 from collections import defaultdict
 from time import monotonic
 
 import orjson
 from aiokafka import AIOKafkaConsumer, ConsumerRecord, TopicPartition
-from aiokafka.errors import CommitFailedError
+from aiokafka.errors import CommitFailedError, IllegalStateError
 from nats.aio.client import Client
 from nats.errors import Error as NatsError
 
@@ -17,6 +19,10 @@ from geo_tracking.spatial import Record, match_records, persist_latest, watermar
 from geo_tracking.tiles import position_subject
 
 logger = logging.getLogger(__name__)
+
+
+class PublishStalled(Exception):
+    pass
 
 
 def frame(kind: str, items: list) -> bytes:
@@ -86,14 +92,21 @@ class Processor:
         await self.publish(messages)
 
     async def publish(self, messages: list[tuple[str, bytes]]) -> None:
+        deadline = monotonic() + self.settings.publish_deadline_seconds
+        sent = 0
         while True:
             try:
-                for subject, data in messages:
-                    await self.nats.publish(subject, data)
+                while sent < len(messages):
+                    await self.nats.publish(*messages[sent])
+                    sent += 1
                 await self.nats.flush(timeout=2)
                 return
             except (NatsError, TimeoutError):
-                logger.warning("NATS publish failed after commit; retrying the batch's events")
+                if monotonic() > deadline:
+                    raise PublishStalled from None
+                logger.warning(
+                    "NATS unavailable after commit; waiting to deliver the batch's events"
+                )
                 self.metrics.counts["publish_retries"] += 1
                 await asyncio.sleep(self.settings.processor_retry_seconds)
 
@@ -119,10 +132,16 @@ class Processor:
                 continue
             self.metrics.processing_ms.append((monotonic() - started) * 1000)
             self.metrics.counts["batches_committed"] += 1
-            offsets = {partition: items[-1].offset + 1 for partition, items in batches.items()}
+            owned = self.consumer.assignment()
+            offsets = {
+                partition: items[-1].offset + 1
+                for partition, items in batches.items()
+                if partition in owned
+            }
             try:
-                await self.consumer.commit(offsets)
-            except CommitFailedError:
+                if offsets:
+                    await self.consumer.commit(offsets)
+            except (CommitFailedError, IllegalStateError):
                 logger.warning("Offset commit lost to a rebalance; the new owner replays as stale")
                 self.metrics.counts["commits_lost"] += 1
             await self.refresh_lag()
@@ -167,6 +186,13 @@ async def serve(settings: Settings, assigned: asyncio.Event | None = None) -> No
         await db.close()
 
 
+async def main() -> None:
+    task = asyncio.create_task(serve(Settings()))
+    asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, task.cancel)
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(serve(Settings()))
+    asyncio.run(main())

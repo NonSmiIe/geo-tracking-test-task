@@ -5,6 +5,7 @@ from functools import partial
 import orjson
 from aiokafka import AIOKafkaProducer
 from aiokafka.errors import KafkaError
+from aiokafka.structs import RecordMetadata
 from pydantic import ValidationError
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
@@ -22,6 +23,7 @@ class Acknowledgements:
         self.count = 0
         self.issued = 0
         self.settled: set[int] = set()
+        self.failed = False
         self.idle = asyncio.Event()
         self.idle.set()
 
@@ -38,27 +40,38 @@ class Acknowledgements:
         if self.count == self.issued:
             self.idle.set()
 
+    def fail(self) -> None:
+        self.failed = True
+        self.idle.set()
+
 
 class Ingest:
-    def __init__(self, settings: Settings, producer: AIOKafkaProducer, metrics: Metrics):
+    def __init__(self, settings: Settings, producer: AIOKafkaProducer, metrics: Metrics) -> None:
         self.settings, self.producer, self.metrics = settings, producer, metrics
+        self.window = asyncio.Semaphore(settings.produce_window)
         self.inflight = 0
-        self.room = asyncio.Event()
-        self.room.set()
+        self.closers: set[asyncio.Task[None]] = set()
         metrics.gauges["produce_inflight"] = lambda: self.inflight
 
-    def reserve(self, count: int) -> None:
+    async def admit(self, count: int) -> None:
+        acquired = 0
+        try:
+            while acquired < count:
+                await self.window.acquire()
+                acquired += 1
+        except BaseException:
+            for _ in range(acquired):
+                self.window.release()
+            raise
         self.inflight += count
         self.metrics.high_water("produce_inflight_high_water", self.inflight)
-        if self.inflight >= self.settings.produce_window:
-            self.room.clear()
 
     def release(self, count: int) -> None:
         self.inflight -= count
-        if self.inflight < self.settings.produce_window:
-            self.room.set()
+        for _ in range(count):
+            self.window.release()
 
-    async def send(self, report: Report) -> asyncio.Future:
+    async def send(self, report: Report) -> asyncio.Future[RecordMetadata]:
         return await self.producer.send(
             self.settings.kafka_topic,
             value=orjson.dumps(report.record()),
@@ -66,10 +79,12 @@ class Ingest:
         )
 
     async def publish(self, reports: Sequence[Report]) -> None:
-        if self.inflight + len(reports) > self.settings.produce_window:
+        try:
+            async with asyncio.timeout(self.settings.admission_timeout_seconds):
+                await self.admit(len(reports))
+        except TimeoutError:
             self.metrics.counts["ingest_rejected"] += len(reports)
-            raise Overloaded
-        self.reserve(len(reports))
+            raise Overloaded from None
         try:
             await asyncio.gather(*[await self.send(report) for report in reports])
         finally:
@@ -78,16 +93,20 @@ class Ingest:
 
     async def stream(self, socket: WebSocket) -> None:
         await socket.accept()
-        window = asyncio.Semaphore(self.settings.ingest_window)
+        own = asyncio.Semaphore(self.settings.ingest_window)
         acks = Acknowledgements()
-        failure: BaseException | None = None
 
-        def settled(sequence: int, future: asyncio.Future) -> None:
-            nonlocal failure
-            window.release()
+        def broken() -> None:
+            acks.fail()
+            closer = asyncio.create_task(socket.close(code=1011, reason="produce_failed"))
+            self.closers.add(closer)
+            closer.add_done_callback(self.closers.discard)
+
+        def settled(sequence: int, future: asyncio.Future[RecordMetadata]) -> None:
+            own.release()
             self.release(1)
             if future.cancelled() or future.exception() is not None:
-                failure = failure or KafkaError("produce_failed")
+                broken()
                 return
             acks.settle(sequence)
             self.metrics.counts["reports_ingested"] += 1
@@ -105,23 +124,29 @@ class Ingest:
 
         ticker = asyncio.create_task(periodic())
         try:
-            while failure is None:
+            while not acks.failed:
                 message = orjson.loads(await socket.receive_text())
                 if isinstance(message, dict) and message.get("type") == "flush":
                     await acks.idle.wait()
-                    await acknowledge()
+                    if not acks.failed:
+                        await acknowledge()
                     continue
                 report = ReportAdapter.validate_python(message)
-                await window.acquire()
-                while self.inflight >= self.settings.produce_window:
-                    await self.room.wait()
-                self.reserve(1)
-                (await self.send(report)).add_done_callback(partial(settled, acks.issue()))
-            await socket.close(code=1011, reason="produce_failed")
+                await own.acquire()
+                await self.admit(1)
+                sequence = acks.issue()
+                try:
+                    future = await self.send(report)
+                except KafkaError:
+                    own.release()
+                    self.release(1)
+                    broken()
+                    break
+                future.add_done_callback(partial(settled, sequence))
         except (ValidationError, orjson.JSONDecodeError):
             self.metrics.counts["ingest_invalid"] += 1
             await socket.close(code=1007, reason="invalid_report")
-        except (WebSocketDisconnect, OSError):
+        except (WebSocketDisconnect, OSError, RuntimeError):
             pass
         finally:
             ticker.cancel()

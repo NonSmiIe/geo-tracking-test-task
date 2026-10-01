@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi import FastAPI, WebSocket
 from starlette.requests import HTTPConnection
 
 from geo_tracking.bus import Subjects, connect_nats, serve_metrics
@@ -45,9 +45,7 @@ def create_gateway_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "alive"}
 
     @app.get("/health/ready")
-    async def ready(connection: HTTPConnection) -> dict:
-        if not gateway(connection).nats.is_connected:
-            raise HTTPException(503, "nats_unavailable")
+    async def ready() -> dict:
         return {"status": "ready"}
 
     return app

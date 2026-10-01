@@ -16,7 +16,8 @@ class Database:
             pool_timeout=1,
             pool_pre_ping=True,
             connect_args={
-                "server_settings": {"statement_timeout": str(settings.database_timeout_ms)}
+                "command_timeout": settings.database_timeout_ms / 1000 * 2,
+                "server_settings": {"statement_timeout": str(settings.database_timeout_ms)},
             },
         )
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
