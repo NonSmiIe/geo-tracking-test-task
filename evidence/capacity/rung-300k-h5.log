@@ -1,0 +1,97 @@
+{
+  "acceptance_passed": false,
+  "workload": {
+    "passed": false,
+    "checks": {
+      "exact_population": false,
+      "no_loss_or_overload": false,
+      "sustained_rate": false,
+      "scheduling_p99": false,
+      "scheduling_tail_fraction": false,
+      "scheduling_max": false
+    },
+    "late_fraction": 0.061517722222222224,
+    "minimum_acked_rate": 59400.0
+  },
+  "pipeline": {
+    "passed": false,
+    "checks": {
+      "counters_never_reset": true,
+      "every_acked_report_committed": false,
+      "consumer_lag_drained": true,
+      "no_session_evicted": true,
+      "no_slow_consumer": true,
+      "no_failed_batches": false,
+      "database_holds_every_latest_report": true
+    },
+    "committed": 7027097.0,
+    "stale": 186168.0,
+    "duplicate": -2570.0,
+    "replayed": 0,
+    "stored_latest": {
+      "devices": 300000,
+      "timestamp_sum": "537265881661074970207"
+    }
+  },
+  "delivery_reconciled": true,
+  "delivery_latency": {
+    "positions": {
+      "count": 56663236,
+      "max_ms": 100000,
+      "p50_ms": 100000,
+      "p95_ms": 100000,
+      "p99_ms": 100000
+    },
+    "inside_report": {
+      "count": 35339914,
+      "max_ms": 100000,
+      "p50_ms": 100000,
+      "p95_ms": 100000,
+      "p99_ms": 100000
+    }
+  },
+  "sessions": [
+    {
+      "counts": {
+        "positions": 17669957,
+        "inside_report": 17669957
+      },
+      "checks": {
+        "positions": true,
+        "inside_report": true,
+        "not_closed": true
+      }
+    },
+    {
+      "counts": {
+        "positions": 17669957,
+        "inside_report": 17669957
+      },
+      "checks": {
+        "positions": true,
+        "inside_report": true,
+        "not_closed": true
+      }
+    },
+    {
+      "counts": {
+        "positions": 17669957
+      },
+      "checks": {
+        "positions": true,
+        "inside_report": true,
+        "not_closed": true
+      }
+    },
+    {
+      "counts": {
+        "positions": 3653365
+      },
+      "checks": {
+        "positions": true,
+        "inside_report": true,
+        "not_closed": true
+      }
+    }
+  ]
+}
