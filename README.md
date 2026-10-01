@@ -220,6 +220,8 @@ Each scenario runs 100,000 devices for 180 s and breaks one container about 60 s
 | api replica SIGKILL | 702 | 184 ms | open, nothing missed | [passed](evidence/faults/s6-api-kill.json) |
 | gateway replica SIGKILL | 0 | 190 ms | the one on it reconnected and resumed | [passed](evidence/faults/s7-gateway-kill.json) |
 | edge restart | 3,567 | 156 ms | all reconnected and resumed | [passed](evidence/faults/s8-edge-restart.json) |
+| half the processors stopped at 60 s, started at 120 s (two rebalances) | 0 | 207 ms | open; 1,089 re-emitted | [passed](evidence/faults/s9-processor-rebalance.json) |
+| the same, revoked lanes finish their batch before handing over | 0 | 185 ms | open; 48 re-emitted | [passed](evidence/faults/s9-processor-rebalance-graceful.json) |
 
 No scenario lost an acknowledged report. Re-emitted events are the replay of batches committed but not yet offset-committed, so delivery is at least once.
 
