@@ -1,19 +1,11 @@
-from collections.abc import Awaitable, Callable, MutableMapping
-from typing import Any
-
 import orjson
-
-Scope = MutableMapping[str, Any]
-Message = MutableMapping[str, Any]
-Receive = Callable[[], Awaitable[Message]]
-Send = Callable[[Message], Awaitable[None]]
-App = Callable[[Scope, Receive, Send], Awaitable[None]]
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 TOO_LARGE = orjson.dumps({"detail": "body_capacity"})
 
 
 class BodyLimit:
-    def __init__(self, app: App, limit: int) -> None:
+    def __init__(self, app: ASGIApp, limit: int) -> None:
         self.app, self.limit = app, limit
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:

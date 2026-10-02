@@ -18,7 +18,8 @@ from aiokafka.partitioner import DefaultPartitioner
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from generator import Config, Histogram, fingerprint, run
-from geo_tracking.tiles import viewport_subjects
+from geo_tracking.settings import Settings
+from geo_tracking.subjects import Subjects
 from scripts.acceptance import (
     FAULT_POLICY,
     POLICY,
@@ -210,7 +211,7 @@ async def record_mismatch(args: argparse.Namespace, prefix: str, expected: dict[
     )
     stored = dict(line.split(",") for line in rows.splitlines())
     java = DefaultPartitioner()
-    partitions = list(range(24))
+    partitions = list(range(Settings().kafka_partitions))
     wrong = [
         {
             "device_id": device,
@@ -285,6 +286,9 @@ async def inject(faults: list[str], log: list[dict]) -> None:
                 "output": output.decode().strip(),
             }
         )
+
+
+PROBE_SUBJECTS = Subjects("p").viewport(**PROBE, limit=Settings().viewport_tiles)
 
 
 async def benchmark(args: argparse.Namespace) -> dict:
@@ -385,7 +389,7 @@ async def benchmark(args: argparse.Namespace) -> dict:
                             spread_km=args.spread_km,
                             prefix=prefix,
                         ),
-                        probes=[sorted(viewport_subjects("p", **PROBE, limit=16))],
+                        probes=[sorted(PROBE_SUBJECTS)],
                     )
                     await injector
                     await settle()
@@ -495,19 +499,20 @@ async def benchmark(args: argparse.Namespace) -> dict:
 
 
 if __name__ == "__main__":
+    defaults = Config()
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", default="http://127.0.0.1:8097")
+    parser.add_argument("--url", default=defaults.url)
     parser.add_argument("--prometheus", default="http://127.0.0.1:9097")
     parser.add_argument("--project", default="geo-tracking-test-task")
     parser.add_argument("--devices", type=int, default=100000)
-    parser.add_argument("--interval", type=float, default=5)
+    parser.add_argument("--interval", type=float, default=defaults.interval)
     parser.add_argument("--duration", type=float, default=900)
     parser.add_argument("--processes", type=int, default=8)
     parser.add_argument("--connections", type=int, default=8)
     parser.add_argument("--zones", type=int, default=100)
-    parser.add_argument("--latitude", type=float, default=56.9496)
-    parser.add_argument("--longitude", type=float, default=24.1052)
-    parser.add_argument("--spread-km", type=float, default=150)
+    parser.add_argument("--latitude", type=float, default=defaults.latitude)
+    parser.add_argument("--longitude", type=float, default=defaults.longitude)
+    parser.add_argument("--spread-km", type=float, default=defaults.spread_km)
     parser.add_argument(
         "--fault",
         action="append",

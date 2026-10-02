@@ -17,6 +17,8 @@ from sqlalchemy import text as sql
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from geo_tracking.schemas import ID_LENGTH, MAX_RADIUS_M
+
 
 class Base(DeclarativeBase):
     pass
@@ -25,7 +27,7 @@ class Base(DeclarativeBase):
 class Zone(Base):
     __tablename__ = "geozones"
     __table_args__ = (
-        CheckConstraint("radius_m > 0 AND radius_m <= 500000", name="bounded_radius"),
+        CheckConstraint(f"radius_m > 0 AND radius_m <= {MAX_RADIUS_M}", name="bounded_radius"),
         Index("geozones_owner", "user_id"),
         Index(
             "geozones_active_footprint",
@@ -35,7 +37,7 @@ class Zone(Base):
         ),
     )
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    user_id: Mapped[str] = mapped_column(String(96))
+    user_id: Mapped[str] = mapped_column(String(ID_LENGTH))
     name: Mapped[str] = mapped_column(String(120))
     center: Mapped[WKBElement | WKTElement] = mapped_column(
         Geography("POINT", srid=4326, spatial_index=False)
@@ -52,7 +54,7 @@ class Zone(Base):
 class DeviceLatest(Base):
     __tablename__ = "device_latest"
     __table_args__ = (Index("device_latest_cell", "cell"),)
-    device_id: Mapped[str] = mapped_column(String(96, collation="C"), primary_key=True)
+    device_id: Mapped[str] = mapped_column(String(ID_LENGTH, collation="C"), primary_key=True)
     position: Mapped[WKBElement] = mapped_column(Geometry("POINT", srid=4326, spatial_index=False))
     reported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     cell: Mapped[int] = mapped_column(Integer, Computed("grid_cell(position)", persisted=True))

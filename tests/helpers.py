@@ -3,8 +3,9 @@ from time import monotonic, sleep
 
 import httpx
 import orjson
-from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import ClientConnection, connect
+
+from geo_tracking.schemas import RIGA as HOME
 
 WORLD = {"south": -90, "west": -180, "north": 90, "east": 180}
 RIGA = {"south": 56.5, "west": 23.5, "north": 57.5, "east": 25}
@@ -12,7 +13,7 @@ START = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def zone(http: httpx.Client, owner: str = "alice", **changes: object) -> dict:
-    payload = {"name": "Home", "latitude": 56.9496, "longitude": 24.1052, "radius_m": 100}
+    payload = {"name": "Home", "latitude": HOME[0], "longitude": HOME[1], "radius_m": 100}
     response = http.post("/geozones", json=payload | changes, headers={"X-User-ID": owner})
     assert response.status_code == 201, response.text
     return response.json()
@@ -21,8 +22,8 @@ def zone(http: httpx.Client, owner: str = "alice", **changes: object) -> dict:
 def report(device: str = "device-1", offset: float = 0, **changes: object) -> dict:
     return {
         "device_id": device,
-        "latitude": 56.9496,
-        "longitude": 24.1052,
+        "latitude": HOME[0],
+        "longitude": HOME[1],
         "timestamp": (START + timedelta(seconds=offset)).isoformat(),
     } | changes
 
@@ -64,8 +65,6 @@ def silent(socket: ClientConnection, kind: str, seconds: float = 1.5) -> None:
             assert message["type"] != kind, message
     except TimeoutError:
         pass
-    except ConnectionClosed:
-        raise
 
 
 def wait_for(predicate, timeout: float = 15, interval: float = 0.1):

@@ -38,7 +38,6 @@ CONNECTIONS = Gauge("fleet_gateway_connections", "Open dashboard sockets", regis
 SUBSCRIPTIONS = Gauge(
     "fleet_gateway_subscriptions", "NATS subjects held for dashboards", registry=GATEWAY
 )
-FRAMES = Counter("fleet_gateway_frames", "Frames queued to dashboard sockets", registry=GATEWAY)
 FRAME_BYTES = Counter(
     "fleet_gateway_frame_bytes", "Bytes queued to dashboard sockets", registry=GATEWAY
 )
@@ -66,7 +65,6 @@ RECORDS = labelled(
     "duplicate",
     "replayed",
 )
-ALERTS = Counter("fleet_processor_alerts", "Zone matches published", registry=PROCESSOR)
 BATCHES = labelled(
     Counter(
         "fleet_processor_batches", "Processed batches, by outcome", ["outcome"], registry=PROCESSOR
@@ -85,12 +83,6 @@ FRESHNESS = Histogram(
     "Report timestamp to published event, oldest per batch",
     buckets=(0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 300),
     registry=PROCESSOR,
-)
-PUBLISH_RETRIES = Counter(
-    "fleet_processor_publish_retries", "NATS publish attempts retried", registry=PROCESSOR
-)
-COMMITS_LOST = Counter(
-    "fleet_processor_commits_lost", "Offset commits lost to a rebalance", registry=PROCESSOR
 )
 PARTITIONS = Gauge(
     "fleet_processor_partitions", "Partitions this processor owns", registry=PROCESSOR

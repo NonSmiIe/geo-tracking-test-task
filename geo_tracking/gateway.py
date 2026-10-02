@@ -13,22 +13,27 @@ from nats.errors import Error as NatsError
 from pydantic import ValidationError
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from geo_tracking.bus import Subjects
 from geo_tracking.logs import REQUEST_ID
 from geo_tracking.metrics import (
     CONNECTIONS,
     EVICTIONS,
     FRAME_BYTES,
-    FRAMES,
     SLOW_CONSUMERS,
     SUBSCRIPTIONS,
 )
 from geo_tracking.schemas import ViewportAdapter
 from geo_tracking.settings import Settings
-from geo_tracking.tiles import viewport_subjects
+from geo_tracking.subjects import Subjects
 
-SUBSCRIBED = b'{"type":"subscribed"}'
-RESYNC = b'{"type":"resync"}'
+Frame = tuple[str, int]
+
+
+def frame(data: bytes) -> Frame:
+    return data.decode(), len(data)
+
+
+SUBSCRIBED = frame(b'{"type":"subscribed"}')
+RESYNC = frame(b'{"type":"resync"}')
 
 
 logger = logging.getLogger(__name__)
@@ -47,21 +52,22 @@ class Connection:
         self.user_id = user_id
         self.socket = socket
         self.settings = settings
-        self.queue: deque[bytes] = deque()
+        self.queue: deque[Frame] = deque()
         self.queued_bytes = 0
         self.wake = asyncio.Event()
         self.reason: str | None = None
         self.subjects: set[str] = set()
         self.writer: asyncio.Task[None] | None = None
 
-    def enqueue(self, data: bytes) -> bool:
+    def enqueue(self, item: Frame) -> bool:
         if self.reason is not None:
             return False
-        if self.queued_bytes + len(data) > self.settings.websocket_queue_bytes:
+        size = item[1]
+        if self.queued_bytes + size > self.settings.websocket_queue_bytes:
             return False
-        self.queue.append(data)
-        self.queued_bytes += len(data)
-        self.budget.used += len(data)
+        self.queue.append(item)
+        self.queued_bytes += size
+        self.budget.used += size
         self.wake.set()
         return True
 
@@ -77,13 +83,13 @@ class Connection:
         while True:
             await self.wake.wait()
             while self.queue:
-                data = self.queue[0]
+                text, size = self.queue[0]
                 await asyncio.wait_for(
-                    self.socket.send_text(data.decode()), self.settings.send_timeout_seconds
+                    self.socket.send_text(text), self.settings.send_timeout_seconds
                 )
                 self.queue.popleft()
-                self.queued_bytes -= len(data)
-                self.budget.used -= len(data)
+                self.queued_bytes -= size
+                self.budget.used -= size
             self.wake.clear()
 
 
@@ -119,12 +125,13 @@ class Gateway:
             connection.enqueue(RESYNC)
 
     def deliver(self, subject: str, data: bytes) -> None:
+        item, delivered = frame(data), 0
         for connection in tuple(self.routes.get(subject, ())):
-            if connection.enqueue(data):
-                FRAMES.inc()
-                FRAME_BYTES.inc(len(data))
+            if connection.enqueue(item):
+                delivered += 1
             else:
                 self.evict(connection, "backlog_overflow")
+        FRAME_BYTES.inc(delivered * item[1])
         if self.budget.used > self.settings.gateway_queue_bytes:
             backlog = sorted(self.connections.values(), key=lambda c: c.queued_bytes, reverse=True)
             for connection in backlog:
@@ -190,13 +197,8 @@ class Gateway:
 
     def viewport(self, connection: Connection, raw: str) -> set[str]:
         view = ViewportAdapter.validate_json(raw)
-        return self.private(connection.user_id) | viewport_subjects(
-            self.settings.subject_prefix,
-            view.south,
-            view.west,
-            view.north,
-            view.east,
-            self.settings.viewport_tiles,
+        return self.private(connection.user_id) | self.subjects.viewport(
+            view.south, view.west, view.north, view.east, self.settings.viewport_tiles
         )
 
     async def read(self, connection: Connection) -> None:
@@ -230,11 +232,11 @@ class Gateway:
         try:
             await asyncio.wait_for(socket.accept(), self.settings.send_timeout_seconds)
         except (TimeoutError, OSError):
-            self.opening -= 1
             return
-        self.opening -= 1
+        finally:
+            self.opening -= 1
         self.connections[connection.id] = connection
-        connection.enqueue(orjson.dumps({"type": "ready", "session_id": connection.id}))
+        connection.enqueue(frame(orjson.dumps({"type": "ready", "session_id": connection.id})))
         connection.writer = asyncio.create_task(connection.write())
         try:
             await self.route(connection, self.private(user_id))

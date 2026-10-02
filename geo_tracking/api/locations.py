@@ -14,7 +14,7 @@ REPORT_SCHEMA = {"$ref": "#/components/schemas/Report"}
 
 async def publish(services: Services, reports: list[Report]) -> dict[str, Any]:
     try:
-        await services.ingest.publish(reports)
+        await services.ingest.produce(reports)
     except Overloaded:
         raise HTTPException(503, "ingest_capacity", headers={"Retry-After": "1"}) from None
     except ProduceFailed:

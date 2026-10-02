@@ -331,7 +331,7 @@ async function loadInsights() {
     rows.push(element('h3', 'Devices inside your zones', 'insight-section-title'));
     for (const zone of data.zones) { const row = element('div', undefined, 'occupancy-row'); row.append(element('span', zone.name), element('strong', zone.active ? `${count(zone.devices_inside)} inside` : 'Paused')); rows.push(row); }
     if (!data.zones.length) rows.push(element('p', 'Create a geofence to see its current occupancy.', 'view-description'));
-    if (data.zones_truncated) rows.push(element('p', 'Showing the first 50 zones.', 'list-caption'));
+    if (data.zones_truncated) rows.push(element('p', `Showing the first ${data.zones.length} zones.`, 'list-caption'));
     $('insights').replaceChildren(...rows);
   } catch (cause) { if (current(version, who) && loadId === insightLoadId) $('insights').replaceChildren(element('p', 'Could not refresh the brief. Try Refresh again.', 'view-description')); }
   finally { if (current(version, who) && loadId === insightLoadId) $('refresh-insights').disabled = false; }

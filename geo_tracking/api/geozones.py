@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from geoalchemy2 import Geometry, WKTElement
 from sqlalchemy import Select, cast, func, select, text
 
-from geo_tracking.api.services import ServicesDep, Session, User, zones_changed
+from geo_tracking.api.services import ServicesDep, Session, User, page
 from geo_tracking.models import Zone
 from geo_tracking.schemas import ZoneCreate, ZoneUpdate
 
@@ -56,8 +56,16 @@ async def bound_overlap(session: Session, zone: Zone, limit: int) -> None:
         raise HTTPException(409, "zone_overlap_exceeded")
 
 
-async def present(session: Session, zone_id: UUID) -> dict[str, Any]:
-    return dict((await session.execute(zone_query().where(Zone.id == zone_id))).mappings().one())
+async def present(session: Session, zone_id: UUID, user: str) -> dict[str, Any]:
+    query = zone_query().where(Zone.id == zone_id, Zone.user_id == user)
+    row = (await session.execute(query)).mappings().one_or_none()
+    if row is None:
+        raise HTTPException(404, "zone_not_found")
+    return dict(row)
+
+
+async def lock_owner(session: Session, user: str) -> None:
+    await session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:user))"), {"user": user})
 
 
 @router.post("", status_code=201)
@@ -65,7 +73,7 @@ async def create_zone(
     payload: ZoneCreate, user: User, session: Session, services: ServicesDep
 ) -> dict[str, Any]:
     async with session.begin():
-        await session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:user))"), {"user": user})
+        await lock_owner(session, user)
         total = (
             await session.execute(select(func.count()).where(Zone.user_id == user))
         ).scalar_one()
@@ -81,8 +89,8 @@ async def create_zone(
         session.add(zone)
         await session.flush()
         await bound_overlap(session, zone, services.settings.max_zone_overlap)
-        row = await present(session, zone.id)
-    await zones_changed(services.nats, services.subjects, user)
+        row = await present(session, zone.id, user)
+    await services.zones_changed(user)
     return row
 
 
@@ -96,23 +104,12 @@ async def list_zones(
     query = zone_query().where(Zone.user_id == user).order_by(Zone.id).limit(limit + 1)
     if after:
         query = query.where(Zone.id > after)
-    rows = (await session.execute(query)).mappings().all()
-    return {
-        "items": [dict(row) for row in rows[:limit]],
-        "next_cursor": str(rows[limit - 1]["id"]) if len(rows) > limit else None,
-    }
+    return page((await session.execute(query)).mappings().all(), limit, "id")
 
 
 @router.get("/{zone_id}")
 async def get_zone(zone_id: UUID, user: User, session: Session) -> dict[str, Any]:
-    row = (
-        (await session.execute(zone_query().where(Zone.id == zone_id, Zone.user_id == user)))
-        .mappings()
-        .one_or_none()
-    )
-    if row is None:
-        raise HTTPException(404, "zone_not_found")
-    return dict(row)
+    return await present(session, zone_id, user)
 
 
 @router.patch("/{zone_id}")
@@ -120,7 +117,7 @@ async def update_zone(
     zone_id: UUID, payload: ZoneUpdate, user: User, session: Session, services: ServicesDep
 ) -> dict[str, Any]:
     async with session.begin():
-        await session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:user))"), {"user": user})
+        await lock_owner(session, user)
         zone = await owned(session, zone_id, user)
         values = payload.model_dump(exclude_unset=True)
         if "latitude" in values:
@@ -129,10 +126,9 @@ async def update_zone(
             setattr(zone, key, value)
         zone.version += 1
         await session.flush()
-        await session.refresh(zone)
         await bound_overlap(session, zone, services.settings.max_zone_overlap)
-        row = await present(session, zone.id)
-    await zones_changed(services.nats, services.subjects, user)
+        row = await present(session, zone.id, user)
+    await services.zones_changed(user)
     return row
 
 
@@ -140,4 +136,4 @@ async def update_zone(
 async def delete_zone(zone_id: UUID, user: User, session: Session, services: ServicesDep) -> None:
     async with session.begin():
         await session.delete(await owned(session, zone_id, user))
-    await zones_changed(services.nats, services.subjects, user)
+    await services.zones_changed(user)

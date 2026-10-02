@@ -11,8 +11,8 @@ from websockets.sync.client import connect
 from geo_tracking.db import Database
 from geo_tracking.metrics import PROCESSOR
 from geo_tracking.processor import Processor, PublishStalled
-from tests.conftest import Worker, free_port
 from tests.helpers import RIGA, collect, dashboard, look, micros, report, silent, wait_for, zone
+from tests.stack import Worker, free_port
 
 
 def latest(http: httpx.Client, device: str) -> dict | None:

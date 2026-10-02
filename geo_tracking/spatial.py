@@ -25,7 +25,7 @@ WITH samples AS MATERIALIZED (
     FROM unnest(CAST(:longitudes AS float8[]), CAST(:latitudes AS float8[]))
          WITH ORDINALITY AS report(longitude, latitude, ordinality)
 )
-SELECT samples.report_index, zone.id AS zone_id, zone.user_id, zone.version AS zone_version
+SELECT samples.report_index, zone.id::text AS zone_id, zone.user_id, zone.version AS zone_version
 FROM samples
 JOIN geozones AS zone
   ON zone.active

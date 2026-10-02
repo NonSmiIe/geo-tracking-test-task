@@ -18,7 +18,8 @@ import aiohttp
 import orjson
 import websockets
 
-from geo_tracking.tiles import position_subject
+from geo_tracking.schemas import RIGA
+from geo_tracking.subjects import Subjects
 
 EARTH_RADIUS = 6371008.8
 
@@ -77,6 +78,9 @@ class Histogram:
         return result
 
 
+PROBE_SUBJECTS = Subjects("p")
+
+
 @dataclass
 class Config:
     url: str = "http://127.0.0.1:8097"
@@ -90,8 +94,8 @@ class Config:
     batch_size: int = 100
     queue_size: int = 8192
     seed: int = 42
-    latitude: float = 56.9496
-    longitude: float = 24.1052
+    latitude: float = RIGA[0]
+    longitude: float = RIGA[1]
     spread_km: float = 150
     synchronized: bool = False
     prefix: str = field(default_factory=lambda: f"run-{uuid4().hex[:8]}")
@@ -294,7 +298,7 @@ async def produce(config: Config, index: int, probes: list[list[str]]) -> Shard:
                 mark = fingerprint(device_id, timestamp)
                 shard.checksum = (shard.checksum + mark) % (1 << 64)
                 if probes:
-                    subject = position_subject("p", latitude, longitude)
+                    subject = PROBE_SUBJECTS.position(latitude, longitude)
                     for slot, patterns in zip(shard.probes, probes, strict=True):
                         if matches(patterns, subject):
                             slot[0] += 1

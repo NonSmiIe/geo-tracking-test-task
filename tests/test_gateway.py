@@ -1,6 +1,6 @@
 import asyncio
 
-from geo_tracking.gateway import RESYNC, Budget, Connection, Gateway
+from geo_tracking.gateway import RESYNC, Budget, Connection, Gateway, frame
 from geo_tracking.metrics import GATEWAY
 from geo_tracking.settings import Settings
 
@@ -53,11 +53,11 @@ async def test_backlog_overflow_evicts_only_the_full_connection() -> None:
     )
     labels = {"reason": "backlog_overflow"}
     before = GATEWAY.get_sample_value("fleet_gateway_evictions_total", labels) or 0
-    full.enqueue(b"x" * 1000)
+    full.enqueue(frame(b"x" * 1000))
     hub.routes["fleet.pos.0"] = {full, healthy}
     hub.deliver("fleet.pos.0", b"y" * 100)
     assert full.reason == "backlog_overflow" and not full.queue and full.queued_bytes == 0
-    assert healthy.reason is None and list(healthy.queue) == [b"y" * 100]
+    assert healthy.reason is None and list(healthy.queue) == [frame(b"y" * 100)]
     assert GATEWAY.get_sample_value("fleet_gateway_evictions_total", labels) == before + 1
 
 
@@ -91,7 +91,7 @@ async def test_the_gateway_budget_evicts_the_largest_backlog_first() -> None:
     hub = gateway(settings)
     big, small = (Connection(user, Socket(), settings, hub.budget) for user in ("alice", "bob"))
     hub.connections = {"a": big, "b": small}
-    big.enqueue(b"x" * 2500)
+    big.enqueue(frame(b"x" * 2500))
     hub.routes["fleet.pos.0"] = {big, small}
     hub.deliver("fleet.pos.0", b"y" * 400)
     assert big.reason == "gateway_budget" and small.reason is None

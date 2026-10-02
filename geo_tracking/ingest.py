@@ -71,7 +71,7 @@ class TokenBucket:
 
 class Window:
     def __init__(self, size: int) -> None:
-        self.free = size
+        self.size = self.free = size
         self.waiters: deque[tuple[int, asyncio.Future[None]]] = deque()
 
     async def acquire(self, count: int) -> None:
@@ -111,28 +111,19 @@ class Ingest:
     def __init__(self, settings: Settings, producer: Producer) -> None:
         self.settings, self.producer = settings, producer
         self.window = Window(settings.produce_window)
-        self.inflight = 0
         self.closers: set[asyncio.Task[None]] = set()
-        WINDOW_SIZE.set(settings.produce_window)
-        WINDOW_USED.set_function(lambda: self.inflight)
-
-    async def admit(self, count: int) -> None:
-        await self.window.acquire(count)
-        self.inflight += count
-
-    def release(self, count: int) -> None:
-        self.inflight -= count
-        self.window.release(count)
+        WINDOW_SIZE.set(self.window.size)
+        WINDOW_USED.set_function(lambda: self.window.size - self.window.free)
 
     def send(self, report: Report) -> asyncio.Future[None]:
         return self.producer.send(
             self.settings.kafka_topic, report.device_id.encode(), orjson.dumps(report.record())
         )
 
-    async def publish(self, reports: Sequence[Report]) -> None:
+    async def produce(self, reports: Sequence[Report]) -> None:
         try:
             async with asyncio.timeout(self.settings.admission_timeout_seconds):
-                await self.admit(len(reports))
+                await self.window.acquire(len(reports))
         except TimeoutError:
             HTTP_OVERLOADED.inc(len(reports))
             raise Overloaded from None
@@ -142,7 +133,7 @@ class Ingest:
             HTTP_FAILED.inc(len(reports))
             raise
         finally:
-            self.release(len(reports))
+            self.window.release(len(reports))
         HTTP_ACCEPTED.inc(len(reports))
 
     async def stream(self, socket: WebSocket) -> None:
@@ -160,7 +151,7 @@ class Ingest:
 
         def settled(sequence: int, future: asyncio.Future[None]) -> None:
             own.release(1)
-            self.release(1)
+            self.window.release(1)
             if future.cancelled() or future.exception() is not None:
                 STREAM_FAILED.inc()
                 broken()
@@ -190,7 +181,7 @@ class Ingest:
                     continue
                 await bucket.take(len(frame))
                 await own.acquire(len(frame))
-                await self.admit(len(frame))
+                await self.window.acquire(len(frame))
                 for index, report in enumerate(frame):
                     sequence = acks.issue()
                     try:
@@ -199,7 +190,7 @@ class Ingest:
                         unsent = len(frame) - index
                         STREAM_FAILED.inc(unsent)
                         own.release(unsent)
-                        self.release(unsent)
+                        self.window.release(unsent)
                         broken()
                         break
                     future.add_done_callback(partial(settled, sequence))

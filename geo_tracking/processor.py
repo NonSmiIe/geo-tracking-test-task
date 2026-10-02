@@ -4,7 +4,6 @@ import signal
 from collections import defaultdict
 from dataclasses import dataclass
 from time import monotonic, time
-from typing import Any
 
 import orjson
 from aiohttp import web
@@ -13,24 +12,21 @@ from aiokafka.errors import CommitFailedError, IllegalStateError
 from nats.aio.client import Client
 from nats.errors import Error as NatsError
 
-from geo_tracking.bus import Subjects, connect_nats, ensure_topic, kafka_topic_id
+from geo_tracking.bus import connect_nats, ensure_topic
 from geo_tracking.db import DATABASE_ERRORS, Database
 from geo_tracking.logs import configure
 from geo_tracking.metrics import (
-    ALERTS,
     BATCH_SECONDS,
     BATCHES,
-    COMMITS_LOST,
     FRESHNESS,
     PARTITIONS,
-    PUBLISH_RETRIES,
     RECORDS,
     exposition,
     monitor_loop,
 )
 from geo_tracking.settings import Settings
 from geo_tracking.spatial import Record, advance, match_records, persist_latest, persisted
-from geo_tracking.tiles import position_subject
+from geo_tracking.subjects import Subjects
 
 logger = logging.getLogger("geo_tracking.processor")
 
@@ -55,12 +51,17 @@ def numbered(offsets: dict[TopicPartition, int]) -> dict[int, int]:
     return {tp.partition: offset for tp, offset in offsets.items()}
 
 
-def frames(kind: str, items: list[Any], limit: int) -> list[bytes]:
+COMMITTED, STALE, DUPLICATE, REPLAYED = (
+    RECORDS.labels(outcome) for outcome in ("committed", "stale", "duplicate", "replayed")
+)
+BATCH_COMMITTED, BATCH_FAILED = BATCHES.labels("committed"), BATCHES.labels("failed")
+
+
+def frames(kind: str, encoded_items: list[bytes], limit: int) -> list[bytes]:
     head, tail = b'{"type":"' + kind.encode() + b'","items":[', b"]}"
     chunks: list[list[bytes]] = [[]]
     size = 0
-    for item in items:
-        encoded = orjson.dumps(item)
+    for encoded in encoded_items:
         if chunks[-1] and size + len(encoded) > limit:
             chunks.append([])
             size = 0
@@ -83,70 +84,67 @@ class Processor(ConsumerRebalanceListener):
         self.subjects = Subjects(settings.subject_prefix)
         self.owned: set[TopicPartition] = set()
         self.settled = asyncio.Event()
-        self.settled.set()
-        self.inflight = 0
-        self.polled = time()
-        self.outbox: asyncio.Queue[Batch] = asyncio.Queue(maxsize=1)
         self.stages: list[asyncio.Task[None]] = []
+        self.reset()
 
-    def unique(self, records: list[Record], seen: set[tuple[str, int]]) -> list[Record]:
-        kept = []
-        for record in records:
-            key = record[0], record[3]
-            if key in seen:
-                RECORDS.labels("duplicate").inc()
-                continue
-            seen.add(key)
-            kept.append(record)
-        return kept
+    def reset(self) -> None:
+        self.outbox: asyncio.Queue[Batch] = asyncio.Queue(maxsize=1)
+        self.inflight = 0
+        self.settled.set()
+        self.polled = monotonic()
 
     async def write(self, fetched: dict[TopicPartition, list[ConsumerRecord]]) -> Batch:
         started = monotonic()
         async with self.db.sessions() as session, session.begin():
             limits = await persisted(session, self.topic_id, [tp.partition for tp in fetched])
-            replayed: list[Record] = []
-            live: list[Record] = []
+            replayed: list[tuple[Record, bytes]] = []
+            live: list[tuple[Record, bytes]] = []
+            seen: set[tuple[str, int]] = set()
             for tp, items in fetched.items():
                 limit = limits[tp.partition]
                 for item in items:
-                    (replayed if item.offset <= limit else live).append(orjson.loads(item.value))
-            seen: set[tuple[str, int]] = set()
-            replayed, live = self.unique(replayed, seen), self.unique(live, seen)
-            advanced = await persist_latest(session, live)
+                    record = orjson.loads(item.value)
+                    key = record[0], record[3]
+                    if key in seen:
+                        DUPLICATE.inc()
+                        continue
+                    seen.add(key)
+                    (replayed if item.offset <= limit else live).append((record, item.value))
+            advanced = await persist_latest(session, [record for record, _ in live])
             fresh = [
-                record
-                for record in live
+                (record, raw)
+                for record, raw in live
                 if record[0] in advanced
                 and ((previous := advanced[record[0]]) is None or record[3] > previous)
             ]
             emitted = replayed + fresh
-            matches = await match_records(session, emitted) if emitted else []
+            records = [record for record, _ in emitted]
+            matches = await match_records(session, records) if records else []
             await advance(
                 session,
                 self.topic_id,
                 {tp.partition: items[-1].offset for tp, items in fetched.items()},
             )
-        RECORDS.labels("replayed").inc(len(replayed))
-        RECORDS.labels("stale").inc(len(live) - len(fresh))
-        RECORDS.labels("committed").inc(len(fresh))
-        ALERTS.inc(len(matches))
-        positions: dict[str, list[Any]] = defaultdict(list[Any])
-        for record in emitted:
-            positions[position_subject(self.settings.subject_prefix, record[1], record[2])].append(
-                record
-            )
-        alerts: dict[str, list[Any]] = defaultdict(list[Any])
+        REPLAYED.inc(len(replayed))
+        STALE.inc(len(live) - len(fresh))
+        COMMITTED.inc(len(fresh))
+        positions: dict[str, list[bytes]] = defaultdict(list)
+        for record, raw in emitted:
+            positions[self.subjects.position(record[1], record[2])].append(raw)
+        alerts: dict[str, list[bytes]] = defaultdict(list)
         for match in matches:
-            record = emitted[match["report_index"]]
+            record = records[match["report_index"]]
             alerts[match["user_id"]].append(
-                {
-                    "device_id": record[0],
-                    "latitude": record[1],
-                    "longitude": record[2],
-                    "timestamp": record[3],
-                    "zone_id": str(match["zone_id"]),
-                    "zone_version": match["zone_version"],
-                }
+                orjson.dumps(
+                    {
+                        "device_id": record[0],
+                        "latitude": record[1],
+                        "longitude": record[2],
+                        "timestamp": record[3],
+                        "zone_id": match["zone_id"],
+                        "zone_version": match["zone_version"],
+                    }
+                )
             )
         limit = self.settings.frame_bytes
         messages = [
@@ -162,7 +160,7 @@ class Processor(ConsumerRebalanceListener):
         return Batch(
             offsets={tp: items[-1].offset + 1 for tp, items in fetched.items()},
             messages=messages,
-            oldest=min((record[3] for record in emitted), default=None),
+            oldest=min((record[3] for record in records), default=None),
             started=started,
         )
 
@@ -182,7 +180,6 @@ class Processor(ConsumerRebalanceListener):
                 logger.warning(
                     "NATS unavailable after commit; waiting to deliver the batch's events"
                 )
-                PUBLISH_RETRIES.inc()
                 await asyncio.sleep(self.settings.processor_retry_seconds)
 
     def begin(self) -> None:
@@ -196,11 +193,8 @@ class Processor(ConsumerRebalanceListener):
 
     async def consume(self) -> None:
         while True:
-            fetched = await self.consumer.getmany(
-                timeout_ms=self.settings.processor_poll_ms,
-                max_records=self.settings.processor_batch,
-            )
-            self.polled = time()
+            fetched = await self.consumer.getmany(timeout_ms=self.settings.processor_poll_ms)
+            self.polled = monotonic()
             if not fetched:
                 continue
             self.begin()
@@ -209,21 +203,21 @@ class Processor(ConsumerRebalanceListener):
             except DATABASE_ERRORS:
                 firsts = {tp: items[0].offset for tp, items in fetched.items()}
                 logger.exception("batch failed; replaying it", extra={"offsets": numbered(firsts)})
-                BATCHES.labels("failed").inc()
+                BATCH_FAILED.inc()
                 for tp, offset in firsts.items():
                     self.consumer.seek(tp, offset)
                 self.end()
                 await asyncio.sleep(self.settings.processor_retry_seconds)
                 continue
             await self.outbox.put(batch)
-            self.polled = time()
+            self.polled = monotonic()
 
     async def deliver(self) -> None:
         while True:
             batch = await self.outbox.get()
             await self.publish(batch.messages)
             BATCH_SECONDS.observe(monotonic() - batch.started)
-            BATCHES.labels("committed").inc()
+            BATCH_COMMITTED.inc()
             if batch.oldest is not None:
                 FRESHNESS.observe(time() - batch.oldest / 1_000_000)
             try:
@@ -233,14 +227,10 @@ class Processor(ConsumerRebalanceListener):
                     "offset commit lost to a rebalance; the new owner replays",
                     extra={"offsets": numbered(batch.offsets)},
                 )
-                COMMITS_LOST.inc()
             self.end()
 
     def start(self) -> None:
-        self.outbox = asyncio.Queue(maxsize=1)
-        self.inflight = 0
-        self.settled.set()
-        self.polled = time()
+        self.reset()
         self.stages = [asyncio.create_task(self.consume()), asyncio.create_task(self.deliver())]
 
     async def halt(self) -> None:
@@ -257,8 +247,8 @@ class Processor(ConsumerRebalanceListener):
                     if stage.done():
                         stage.result()
                 PARTITIONS.set(len(self.owned))
-                if time() - self.polled > stall:
-                    raise Stalled(f"no Kafka poll for {time() - self.polled:.0f} s")
+                if (idle := monotonic() - self.polled) > stall:
+                    raise Stalled(f"no Kafka poll for {idle:.0f} s")
                 await asyncio.sleep(0.1)
             await self.on_partitions_revoked(set(self.owned))
         finally:
@@ -314,8 +304,7 @@ def health_app() -> web.Application:
 async def serve(
     settings: Settings, stopping: asyncio.Event, assigned: asyncio.Event | None = None
 ) -> None:
-    await ensure_topic(settings)
-    topic_id = await kafka_topic_id(settings)
+    topic_id = await ensure_topic(settings)
     db = Database(settings, pool_size=1)
     nats = await connect_nats(settings)
     kafka = consumer(settings)

@@ -18,7 +18,7 @@ spec:
       containers:
         - name: api
           image: fleetline
-          args: [geo_tracking.api.app:app]
+          args: [--ws-max-size, "65536", geo_tracking.api.app:app]
           ports:
             - {name: http, containerPort: 8000}
           envFrom:

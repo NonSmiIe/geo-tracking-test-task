@@ -4,8 +4,8 @@ import httpx
 import pytest
 
 from geo_tracking.loadgen import create_loadgen_app
-from tests.conftest import Server
 from tests.helpers import wait_for
+from tests.stack import Server
 
 LOAD = {"devices": 40, "interval_seconds": 2, "duration_seconds": 10, "spread_km": 2}
 

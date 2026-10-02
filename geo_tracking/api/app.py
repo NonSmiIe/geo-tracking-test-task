@@ -14,13 +14,14 @@ from geo_tracking.api import devices, geozones, health, locations
 from geo_tracking.api.context import RequestContext
 from geo_tracking.api.limits import BodyLimit
 from geo_tracking.api.services import Services
-from geo_tracking.bus import Producer, Subjects, connect_nats, ensure_topic
+from geo_tracking.bus import Producer, connect_nats, ensure_topic
 from geo_tracking.db import DATABASE_ERRORS, Database
 from geo_tracking.ingest import Ingest
 from geo_tracking.logs import configure
 from geo_tracking.metrics import monitor_loop
 from geo_tracking.schemas import Report
 from geo_tracking.settings import Settings
+from geo_tracking.subjects import Subjects
 
 STATIC = Path(__file__).parent.parent / "static"
 

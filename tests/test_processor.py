@@ -1,5 +1,5 @@
 import asyncio
-from time import time
+from time import monotonic
 from typing import Any
 
 import orjson
@@ -30,7 +30,7 @@ def processor(consumer: Any) -> Processor:
 
 async def test_a_processor_that_stops_polling_goes_down() -> None:
     stalled = processor(Fetch())
-    asyncio.get_running_loop().call_later(0.2, setattr, stalled, "polled", time() - 60)
+    asyncio.get_running_loop().call_later(0.2, setattr, stalled, "polled", monotonic() - 60)
     with pytest.raises(Stalled):
         await asyncio.wait_for(stalled.run(asyncio.Event()), 2)
 
@@ -71,7 +71,7 @@ async def test_a_handover_past_the_deadline_drops_the_batch_in_flight() -> None:
 
 def test_frames_are_bounded_by_bytes_and_keep_every_item() -> None:
     items = [[f"device-{index:05d}", 56.9, 24.1, 1_790_000_000 + index] for index in range(5000)]
-    payloads = frames("positions", items, 16384)
+    payloads = frames("positions", [orjson.dumps(item) for item in items], 16384)
     decoded = [orjson.loads(payload) for payload in payloads]
     assert len(payloads) > 1
     assert all(len(payload) <= 16384 + 64 for payload in payloads)

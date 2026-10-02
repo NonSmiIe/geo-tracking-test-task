@@ -1,9 +1,10 @@
-from geo_tracking.api.limits import App, Receive, Scope, Send
+from starlette.types import ASGIApp, Receive, Scope, Send
+
 from geo_tracking.logs import REQUEST_ID
 
 
 class RequestContext:
-    def __init__(self, app: App) -> None:
+    def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:

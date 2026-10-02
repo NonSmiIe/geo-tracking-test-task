@@ -102,12 +102,12 @@
   {
     "file": "evidence/capacity/rung-300k-head-1.json",
     "label": "one writer, build 10afc79, repeat 1",
-    "reason": "p95 over 1 s; DB statement time 2.0 s/s against 1.59, cause open"
+    "reason": "p95 over 1 s; the laptop was also running a browser and other apps, and held 566,143 leftover devices"
   },
   {
     "file": "evidence/capacity/rung-300k-head-2.json",
     "label": "one writer, build 10afc79, repeat 2",
-    "reason": "p95 over 1 s; DB statement time 2.0 s/s against 1.59, cause open"
+    "reason": "p95 over 1 s; the laptop was also running a browser and other apps, and held 566,143 leftover devices"
   },
   {
     "file": "evidence/capacity/rung-300k-final.json",

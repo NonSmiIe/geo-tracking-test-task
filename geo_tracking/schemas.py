@@ -8,9 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 Latitude = Annotated[float, Field(ge=-90, le=90, allow_inf_nan=False)]
 Longitude = Annotated[float, Field(ge=-180, le=180, allow_inf_nan=False)]
 MAX_RADIUS_M = 500_000
+RIGA = 56.9496, 24.1052
 Radius = Annotated[float, Field(gt=0, le=MAX_RADIUS_M, allow_inf_nan=False)]
-IDENTIFIER = r"^[\w.-]+$"
-Identifier = Annotated[str, Field(min_length=1, max_length=96, pattern=IDENTIFIER)]
+ID_LENGTH = 96
+Identifier = Annotated[str, Field(min_length=1, max_length=ID_LENGTH, pattern=r"^[\w.-]+$")]
 
 EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 CLOCK_SKEW = timedelta(seconds=30)
@@ -22,7 +23,9 @@ def microseconds(value: datetime) -> int:
 
 
 class Report(msgspec.Struct, forbid_unknown_fields=True, frozen=True):
-    device_id: Annotated[str, msgspec.Meta(min_length=1, max_length=96, pattern=r"^[\w.-]+\Z")]
+    device_id: Annotated[
+        str, msgspec.Meta(min_length=1, max_length=ID_LENGTH, pattern=r"^[\w.-]+\Z")
+    ]
     latitude: Annotated[float, msgspec.Meta(ge=-90, le=90)]
     longitude: Annotated[float, msgspec.Meta(ge=-180, le=180)]
     timestamp: Annotated[datetime, msgspec.Meta(tz=True)]

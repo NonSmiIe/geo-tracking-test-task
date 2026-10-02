@@ -1,5 +1,0 @@
-# Product truth
-
-Fleetline is a real-time fleet operations dashboard for a GPS tracking take-home implementation. Operators inspect a shared live fleet and define private circular geofences. Each fresh report inside an active zone produces a private live alert in all of that user's connected browser sessions. Mock user identity is explicit and switchable. Alerts have no offline replay; reconnects restore current positions and zones. The use scene is a laptop in daylight, with mobile inspection supported. Success means a working map, searchable large fleets, readable live activity, complete geofence management, and clear actual connection state. Native JavaScript and self-hosted Leaflet, no build tool. Real data only; never invented operational claims. Device updates may exceed 2,000/second, so canvas rendering and bounded feed are requirements. The backend runs one process and PostGIS; the UI makes no horizontal-scaling claims. An optional assistant may suggest zones, with explicit operator confirmation.
-
-Related: [visual system](DESIGN.md).

@@ -1,28 +1,17 @@
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 import confluent_kafka
 import nats
-from aiokafka.admin import AIOKafkaAdminClient, NewTopic
-from aiokafka.errors import TopicAlreadyExistsError
 from confluent_kafka.admin import AdminClient
+from confluent_kafka.cimpl import NewTopic
 from nats.aio.client import Client
 from nats.errors import SlowConsumerError
 
 from geo_tracking.settings import Settings
-
-
-class Subjects:
-    def __init__(self, prefix: str):
-        self.prefix = prefix
-
-    def alerts(self, user_id: str) -> str:
-        return f"{self.prefix}.alerts.{user_id.encode().hex()}"
-
-    def zones(self, user_id: str) -> str:
-        return f"{self.prefix}.zones.{user_id.encode().hex()}"
 
 
 async def connect_nats(
@@ -95,32 +84,28 @@ class Producer:
         await asyncio.to_thread(self.client.flush, 10)
 
 
-async def ensure_topic(settings: Settings) -> None:
-    admin = AIOKafkaAdminClient(bootstrap_servers=settings.kafka_bootstrap)
-    await admin.start()
-    try:
-        if settings.kafka_topic not in await admin.list_topics():
-            await admin.create_topics(
-                [
-                    NewTopic(
-                        settings.kafka_topic, settings.kafka_partitions, settings.kafka_replication
-                    )
-                ]
-            )
-    except TopicAlreadyExistsError:
-        pass
-    finally:
-        await admin.close()
-
-
-async def kafka_topic_id(settings: Settings) -> str:
-    def describe() -> str:
+async def ensure_topic(settings: Settings) -> str:
+    def ensure() -> str:
         config: dict[str, Any] = {
             "bootstrap.servers": settings.kafka_bootstrap,
             "logger": logging.getLogger("librdkafka"),
         }
         admin = AdminClient(config)
-        topics = confluent_kafka.TopicCollection([settings.kafka_topic])
-        return str(admin.describe_topics(topics)[settings.kafka_topic].result(timeout=10).topic_id)
+        topic = settings.kafka_topic
+        wanted = NewTopic(topic, settings.kafka_partitions, settings.kafka_replication)
+        try:
+            admin.create_topics([wanted])[topic].result(timeout=10)
+        except confluent_kafka.KafkaException as error:
+            if error.args[0].code() != confluent_kafka.KafkaError.TOPIC_ALREADY_EXISTS:
+                raise
+        for _ in range(50):
+            try:
+                found = admin.describe_topics(confluent_kafka.TopicCollection([topic]))[topic]
+                return str(found.result(timeout=10).topic_id)
+            except confluent_kafka.KafkaException as error:
+                if error.args[0].code() != confluent_kafka.KafkaError.UNKNOWN_TOPIC_OR_PART:
+                    raise
+                time.sleep(0.1)
+        raise TimeoutError(f"topic {topic} was created but never became visible")
 
-    return await asyncio.to_thread(describe)
+    return await asyncio.to_thread(ensure)

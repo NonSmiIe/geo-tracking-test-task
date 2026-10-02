@@ -4,10 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from geoalchemy2 import Geometry
 from sqlalchemy import ColumnElement, and_, any_, cast, func, or_, select, text
 
-from geo_tracking.api.services import Session, User
+from geo_tracking.api.services import Session, User, page
 from geo_tracking.insights import insights
 from geo_tracking.models import DeviceLatest
 from geo_tracking.schemas import Latitude, Longitude
+from geo_tracking.subjects import spans
 
 router = APIRouter(tags=["devices"])
 
@@ -26,8 +27,7 @@ def bounds(
         return []
     if south is None or west is None or north is None or east is None or south > north:
         raise HTTPException(422, "bbox_requires_ordered_south_west_north_east")
-    spans = [(west, east)] if west <= east else [(west, 180.0), (-180.0, east)]
-    return [func.ST_MakeEnvelope(low, south, high, north, 4326) for low, high in spans]
+    return [func.ST_MakeEnvelope(low, south, high, north, 4326) for low, high in spans(west, east)]
 
 
 def area(envelopes: list[Envelope]) -> ColumnElement[bool]:
@@ -69,11 +69,7 @@ async def latest(
         query = query.where(area(envelopes))
     if after:
         query = query.where(DeviceLatest.device_id > after)
-    rows = (await session.execute(query)).mappings().all()
-    return {
-        "items": [dict(row) for row in rows[:limit]],
-        "next_cursor": rows[limit - 1]["device_id"] if len(rows) > limit else None,
-    }
+    return page((await session.execute(query)).mappings().all(), limit, "device_id")
 
 
 @router.get("/insights")

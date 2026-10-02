@@ -65,10 +65,10 @@ async def test_failed_http_produce_returns_its_window(raise_on_send: bool) -> No
     service = ingest(raise_on_send)
     for _ in range(3):
         with pytest.raises(ProduceFailed):
-            await service.publish([REPORT.decode(orjson.dumps(report()))] * 4)
-    assert service.inflight == 0
+            await service.produce([REPORT.decode(orjson.dumps(report()))] * 4)
+    assert service.window.free == service.window.size
     with pytest.raises(Overloaded):
-        await service.publish([REPORT.decode(orjson.dumps(report()))] * 5)
+        await service.produce([REPORT.decode(orjson.dumps(report()))] * 5)
 
 
 @pytest.mark.parametrize("raise_on_send", [True, False])
@@ -79,7 +79,7 @@ async def test_failed_stream_produce_closes_the_socket_and_returns_the_window(
     socket = DeviceSocket([orjson.dumps([report(), report(offset=1)]).decode(), '{"type":"flush"}'])
     await asyncio.wait_for(service.stream(socket), 2)
     await asyncio.sleep(0)
-    assert socket.closed == 1011 and service.inflight == 0
+    assert socket.closed == 1011 and service.window.free == service.window.size
 
 
 async def test_window_grants_in_order_and_a_large_request_is_not_starved() -> None:

@@ -105,7 +105,7 @@ async def test_footprint_candidates_equal_exact_geography_everywhere(settings: S
                 (
                     await session.execute(
                         text("""
-                    SELECT sample.ordinality - 1, zone.id
+                    SELECT sample.ordinality - 1, zone.id::text
                     FROM unnest(CAST(:lons AS float8[]), CAST(:lats AS float8[]))
                          WITH ORDINALITY AS sample(longitude, latitude, ordinality)
                     JOIN geozones AS zone ON zone.active AND ST_DWithin(

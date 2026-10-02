@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from geo_tracking.logs import configure
-from geo_tracking.schemas import Latitude, Longitude
+from geo_tracking.schemas import RIGA, Latitude, Longitude
 from geo_tracking.settings import Settings
 
 GENERATOR = Path(__file__).resolve().parents[1] / "generator.py"
@@ -28,8 +28,8 @@ class Load(BaseModel):
     interval_seconds: Annotated[float, Field(ge=1, le=60)] = 5
     duration_seconds: Annotated[float, Field(ge=10, le=3600)] = 300
     spread_km: Annotated[float, Field(gt=0, le=2000)] = 50
-    latitude: Latitude = 56.9496
-    longitude: Longitude = 24.1052
+    latitude: Latitude = RIGA[0]
+    longitude: Longitude = RIGA[1]
 
 
 class Run:
