@@ -108,5 +108,10 @@
     "file": "evidence/capacity/rung-300k-head-2.json",
     "label": "one writer, build 10afc79, repeat 2",
     "reason": "p95 over 1 s; DB statement time 2.0 s/s against 1.59, cause open"
+  },
+  {
+    "file": "evidence/capacity/rung-300k-final.json",
+    "label": "submission build, idle laptop after a reboot",
+    "reason": ""
   }
 ]
