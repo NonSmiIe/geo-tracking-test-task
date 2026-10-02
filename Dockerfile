@@ -6,6 +6,7 @@ ENV UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1 PYTHONDONTWRITEBYTECODE=1 PYTHONUNBU
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 COPY geo_tracking geo_tracking
+COPY generator.py ./
 COPY migrations migrations
 COPY alembic.ini ./
 RUN useradd --uid 10001 --no-create-home app

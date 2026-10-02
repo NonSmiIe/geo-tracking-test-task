@@ -1,7 +1,6 @@
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -11,13 +10,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from geo_tracking.api import demo, devices, geozones, health, locations
+from geo_tracking.api import devices, geozones, health, locations
 from geo_tracking.api.context import RequestContext
 from geo_tracking.api.limits import BodyLimit
-from geo_tracking.api.services import Services, zones_changed
+from geo_tracking.api.services import Services
 from geo_tracking.bus import Producer, Subjects, connect_nats, ensure_topic
 from geo_tracking.db import DATABASE_ERRORS, Database
-from geo_tracking.demo import Demo
 from geo_tracking.ingest import Ingest
 from geo_tracking.logs import configure
 from geo_tracking.metrics import monitor_loop
@@ -56,14 +54,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             subjects=subjects,
             prometheus=prometheus,
             ingest=ingest,
-            demo=Demo(settings, db, ingest, partial(zones_changed, nats, subjects)),
         )
         app.state.services = services
         monitor = asyncio.create_task(monitor_loop("api"))
         try:
             yield
         finally:
-            await services.demo.close()
             monitor.cancel()
             await asyncio.gather(monitor, return_exceptions=True)
             await prometheus.close()
@@ -76,7 +72,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(RequestContext)
     for error_type in DATABASE_ERRORS:
         app.add_exception_handler(error_type, database_unavailable)
-    for module in (locations, geozones, devices, demo, health):
+    for module in (locations, geozones, devices, health):
         app.include_router(module.router)
 
     original = app.openapi

@@ -58,12 +58,6 @@ class DeviceLatest(Base):
     cell: Mapped[int] = mapped_column(Integer, Computed("grid_cell(position)", persisted=True))
 
 
-class DemoRun(Base):
-    __tablename__ = "demo_runs"
-    user_id: Mapped[str] = mapped_column(String(96), primary_key=True)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-
-
 class ConsumerProgress(Base):
     __tablename__ = "consumer_progress"
     topic_id: Mapped[str] = mapped_column(String(32), primary_key=True)

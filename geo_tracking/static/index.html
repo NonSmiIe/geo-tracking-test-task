@@ -30,12 +30,18 @@
 <main class="workspace">
  <aside class="sidebar" aria-label="Operations workspace">
   <div class="sidebar-intro"><div class="intro-line"><h1>Your fleet,<br>in the picture.</h1><span class="live-tag">LIVE</span></div><p>Every position. The places that matter.</p></div>
-  <section class="demo-panel" aria-label="Guided demo">
-   <strong>How does it work?</strong>
-   <p>The green circle is a depot. Six trucks drive around it, and every time one reports from inside the circle, an alert appears.</p>
-   <button id="demo-toggle" class="primary full">▶ Start demo</button>
-   <p id="demo-status" role="status">One click starts it; nothing to set up.</p>
-   <button id="demo-all" class="text-button" hidden>Back to all devices</button>
+  <section class="load-panel" aria-label="Load generator">
+   <strong>Load generator</strong>
+   <p>Simulated vehicles drive around the map centre and report through the same ingest path as real devices.</p>
+   <div class="load-grid">
+    <label>Devices<input id="load-devices" type="number" min="1" max="500000" step="1" value="10000"></label>
+    <label>Report every, s<input id="load-interval" type="number" min="1" max="60" step="1" value="5"></label>
+    <label>Run for, min<input id="load-duration" type="number" min="1" max="60" step="1" value="5"></label>
+    <label>Spread, km<input id="load-spread" type="number" min="1" max="2000" step="1" value="50"></label>
+   </div>
+   <div class="radius-presets"><button type="button" data-devices="1000">1k</button><button type="button" data-devices="10000">10k</button><button type="button" data-devices="100000">100k</button><button type="button" data-devices="300000">300k</button></div>
+   <button id="load-toggle" class="primary full">▶ Start load</button>
+   <p id="load-status" role="status">Idle. Devices start around the map centre.</p>
   </section>
   <div class="fleet-summary"><div><strong id="device-count">0</strong><span>tracked devices</span></div><div class="summary-secondary"><strong id="zone-count">0</strong><span>active zones</span></div></div>
   <nav class="tabs" aria-label="Workspace views"><button data-view="fleet" class="selected" aria-pressed="true"><svg><use href="#i-fleet"/></svg>Fleet</button><button data-view="zones" aria-pressed="false"><svg><use href="#i-zone"/></svg>Geofences</button><button data-view="activity" aria-pressed="false"><svg><use href="#i-activity"/></svg>Activity<span id="activity-badge" hidden>0</span></button><button data-view="brief" aria-pressed="false"><svg><use href="#i-spark"/></svg>Brief</button></nav>

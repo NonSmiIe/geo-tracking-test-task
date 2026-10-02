@@ -126,6 +126,13 @@ services:
       replicas: ${API_REPLICAS:-4}
     mem_limit: 320m
     cpus: 1
+  loadgen:
+    restart: unless-stopped
+    <<: *app
+    command: [geo_tracking.loadgen:app]
+    healthcheck: *health
+    mem_limit: 1g
+    cpus: 4
   gateway:
     restart: unless-stopped
     <<: *app

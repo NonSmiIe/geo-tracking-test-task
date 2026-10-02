@@ -42,7 +42,7 @@ def clean_database(settings: Settings) -> None:
         try:
             async with db.engine.begin() as connection:
                 await connection.execute(
-                    text("TRUNCATE geozones, device_latest, demo_runs, consumer_progress")
+                    text("TRUNCATE geozones, device_latest, consumer_progress")
                 )
         finally:
             await db.close()

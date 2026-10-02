@@ -4,27 +4,21 @@ const element = (tag, text, className) => { const node = document.createElement(
 const count = (value) => Number(value || 0).toLocaleString();
 const requestedUser = new URLSearchParams(location.search).get('user');
 let user = requestedUser && /^[\w.-]{1,96}$/.test(requestedUser) ? requestedUser : 'alice';
-let epoch = 0, socket, connectionVersion = 0, editId = null, selectedId = null, following = false;
-let currentView = 'fleet', zonesVisible = true, alertTotal = 0, unread = 0, received = 0, rateReceived = 0;
-let fleetDirty = true, alertsDirty = false, insightLoadId = 0, zoneLoadId = 0, snapshotController, errorTimer;
-let demoPrefix = null, demoRunning = false;
-const deviceName = (id) => demoPrefix && id.startsWith(demoPrefix) ? `Truck ${id.slice(demoPrefix.length)}` : id;
-const positions = new Map(), zones = new Map(), alertFeed = new Map(), pendingPositions = new Map();
-const EPISODE_GAP_MS = 30000, FEED_LIMIT = 80;
+let epoch = 0, editId = null, selected = null, following = false, currentView = 'fleet', zonesVisible = true;
+let alertTotal = 0, unread = 0, insightLoadId = 0, zoneLoadId = 0, errorTimer, feed = [];
+const zones = new Map();
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const map = L.map('map', { preferCanvas: true, zoomControl: false, attributionControl: false }).setView([56.9496, 24.1052], 13);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 L.control.scale({ position: 'bottomleft', imperial: false }).addTo(map);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 const zoneRenderer = L.canvas();
-let draftCircle;
+const worker = new Worker('/static/fleet-worker.js');
+let draftCircle, requestId = 0;
+const pending = new Map();
+const ask = (name, options = {}) => new Promise((resolve) => { const request = ++requestId; pending.set(request, resolve); worker.postMessage({ type: 'query', name, request, ...options }); });
 
-function timestampKey(value) {
-  if (typeof value === 'number') return BigInt(value);
-  const fraction = /\.(\d+)/.exec(value)?.[1] || '';
-  return BigInt(Date.parse(value)) * 1000n + BigInt(fraction.padEnd(6, '0').slice(3, 6) || '0');
-}
-const isoTime = (value) => typeof value === 'number' ? new Date(Math.floor(value / 1000)).toISOString() : value;
+const isoTime = (micros) => new Date(Math.floor(micros / 1000)).toISOString();
 function viewport() {
   const bounds = map.getBounds(), wrap = (value) => ((value + 180) % 360 + 360) % 360 - 180;
   const south = Math.max(-90, bounds.getSouth()), north = Math.min(90, bounds.getNorth());
@@ -47,181 +41,177 @@ async function api(path, options = {}, who = user) {
   return response.status === 204 ? null : response.json();
 }
 function current(version, who) { return version === epoch && who === user; }
-function connectionCurrent(ws, version, generation) { return version === epoch && socket === ws && generation === connectionVersion; }
-function age(timestamp) {
-  const seconds = Math.max(0, Math.floor((Date.now() - Date.parse(timestamp)) / 1000));
+function age(micros) {
+  const seconds = Math.max(0, Math.floor((Date.now() - micros / 1000) / 1000));
   return seconds < 2 ? 'just now' : seconds < 60 ? `${seconds}s ago` : seconds < 3600 ? `${Math.floor(seconds / 60)}m ago` : `${Math.floor(seconds / 3600)}h ago`;
 }
 
-const FleetCanvas = L.Layer.extend({
+const CELL = 34, POINT_LIMIT = 3000;
+const FleetLayer = L.Layer.extend({
   onAdd() {
     this.canvas = L.DomUtil.create('canvas', 'fleet-canvas leaflet-zoom-hide');
     map.getPane('overlayPane').append(this.canvas);
-    this.frame = null;
-    this.redraw = this.redraw.bind(this);
+    this.size = 0; this.x = new Float64Array(1024); this.y = new Float64Array(1024);
+    this.visible = new Int32Array(POINT_LIMIT); this.visibleCount = 0; this.dense = false; this.clusters = [];
+    this.frame = null; this.redraw = this.redraw.bind(this);
     map.on('moveend zoomend resize', this.redraw);
-    this.redraw();
+  },
+  clear() { this.size = 0; this.redraw(); },
+  update(size, slots, points) {
+    if (size > this.x.length) {
+      const capacity = Math.max(size, this.x.length * 2), x = new Float64Array(capacity), y = new Float64Array(capacity);
+      x.set(this.x); y.set(this.y); this.x = x; this.y = y;
+    }
+    for (let position = 0; position < slots.length; position++) { this.x[slots[position]] = points[position * 2]; this.y[slots[position]] = points[position * 2 + 1]; }
+    this.size = size; this.redraw();
+  },
+  screen() {
+    const world = 256 * 2 ** map.getZoom(), origin = map.getPixelBounds().min;
+    return { world, left: origin.x, top: origin.y };
   },
   redraw() {
     if (this.frame !== null) return;
-    this.frame = requestAnimationFrame(() => {
-      this.frame = null;
-      const size = map.getSize(), ratio = Math.min(devicePixelRatio || 1, 2);
-      const topLeft = map.containerPointToLayerPoint([0, 0]);
-      L.DomUtil.setPosition(this.canvas, topLeft);
-      this.canvas.width = size.x * ratio;
-      this.canvas.height = size.y * ratio;
-      this.canvas.style.width = `${size.x}px`;
-      this.canvas.style.height = `${size.y}px`;
-      const context = this.canvas.getContext('2d');
-      context.scale(ratio, ratio);
-      context.fillStyle = document.documentElement.dataset.theme === 'dark' ? '#c2dea9' : '#255b40';
+    this.frame = requestAnimationFrame(() => { this.frame = null; this.draw(); });
+  },
+  draw() {
+    const size = map.getSize(), ratio = Math.min(devicePixelRatio || 1, 2), { world, left, top } = this.screen();
+    L.DomUtil.setPosition(this.canvas, map.containerPointToLayerPoint([0, 0]));
+    this.canvas.width = size.x * ratio; this.canvas.height = size.y * ratio;
+    this.canvas.style.width = `${size.x}px`; this.canvas.style.height = `${size.y}px`;
+    const context = this.canvas.getContext('2d'), dark = document.documentElement.dataset.theme === 'dark';
+    context.scale(ratio, ratio);
+    const columns = Math.ceil(size.x / CELL) + 1, rows = Math.ceil(size.y / CELL) + 1;
+    const cellCount = new Uint32Array(columns * rows), cellX = new Float64Array(columns * rows), cellY = new Float64Array(columns * rows);
+    let visible = 0;
+    for (let slot = 0; slot < this.size; slot++) {
+      const x = this.x[slot] * world - left, y = this.y[slot] * world - top;
+      if (x < -10 || y < -10 || x > size.x + 10 || y > size.y + 10) continue;
+      if (visible < POINT_LIMIT) this.visible[visible] = slot;
+      visible++;
+      const cell = Math.floor(Math.max(0, y) / CELL) * columns + Math.floor(Math.max(0, x) / CELL);
+      cellCount[cell]++; cellX[cell] += x; cellY[cell] += y;
+    }
+    this.visibleCount = Math.min(visible, POINT_LIMIT); this.dense = visible > POINT_LIMIT && map.getZoom() < 17;
+    const ink = dark ? '#c2dea9' : '#255b40';
+    context.fillStyle = ink;
+    this.clusters = [];
+    if (this.dense) {
+      context.font = '700 11px Manrope'; context.textAlign = 'center'; context.textBaseline = 'middle';
+      for (let cell = 0; cell < cellCount.length; cell++) {
+        const total = cellCount[cell]; if (!total) continue;
+        const x = cellX[cell] / total, y = cellY[cell] / total, radius = Math.min(17, 6 + Math.log2(total));
+        context.fillStyle = ink; context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fill();
+        if (total > 3) { context.fillStyle = dark ? '#18231e' : '#fffefa'; context.fillText(total > 999 ? `${(total / 1000).toFixed(total > 99999 ? 0 : 1)}k` : String(total), x, y); }
+        this.clusters.push({ x, y, total, radius });
+      }
+    } else {
       context.beginPath();
-      let visible = 0;
-      const cells = new Map(), dense = positions.size > 2500 && map.getZoom() < 16;
-      this.clusters = [];
-      for (const entry of positions.values()) {
-        const point = map.latLngToContainerPoint([entry.latitude, entry.longitude]);
-        entry.point = point;
-        if (point.x < -10 || point.y < -10 || point.x > size.x + 10 || point.y > size.y + 10) continue;
-        visible++;
-        if (dense) {
-          const key = `${Math.floor(point.x / 34)},${Math.floor(point.y / 34)}`, cell = cells.get(key) || { x: 0, y: 0, count: 0 };
-          cell.x += point.x; cell.y += point.y; cell.count++; cells.set(key, cell); continue;
-        }
-        context.moveTo(point.x + 3, point.y);
-        context.arc(point.x, point.y, 3, 0, Math.PI * 2);
+      for (let position = 0; position < this.visibleCount; position++) {
+        const slot = this.visible[position], x = this.x[slot] * world - left, y = this.y[slot] * world - top;
+        context.moveTo(x + 3, y); context.arc(x, y, 3, 0, Math.PI * 2);
       }
       context.fill();
-      if (dense) {
-        for (const cell of cells.values()) {
-          const x = cell.x / cell.count, y = cell.y / cell.count, radius = Math.min(17, 6 + Math.log2(cell.count));
-          context.fillStyle = document.documentElement.dataset.theme === 'dark' ? '#c2dea9' : '#255b40';
-          context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fill();
-          if (cell.count > 3) { context.fillStyle = '#fffefa'; if (document.documentElement.dataset.theme === 'dark') context.fillStyle = '#18231e'; context.font = '700 11px Manrope'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(cell.count > 999 ? `${(cell.count / 1000).toFixed(1)}k` : String(cell.count), x, y); }
-          this.clusters.push({ x, y, count: cell.count, radius });
-        }
+    }
+    if (selected) {
+      const point = map.latLngToContainerPoint([selected.latitude, selected.longitude]);
+      context.strokeStyle = '#bb713a'; context.lineWidth = 2;
+      context.beginPath(); context.arc(point.x, point.y, 9, 0, Math.PI * 2); context.stroke();
+      if (selected.trail?.length > 1) {
+        context.beginPath();
+        selected.trail.forEach(([lat, lng], step) => { const p = map.latLngToContainerPoint([lat, lng]); if (step) context.lineTo(p.x, p.y); else context.moveTo(p.x, p.y); });
+        context.stroke();
       }
-      $('device-legend').textContent = dense ? 'Fleet density' : 'Device';
-      if (selectedId && positions.has(selectedId)) {
-        const selected = positions.get(selectedId), point = selected.point;
-        context.strokeStyle = '#bb713a'; context.lineWidth = 2;
-        context.beginPath(); context.arc(point.x, point.y, 9, 0, Math.PI * 2); context.stroke();
-        if (selected.trail?.length > 1) {
-          context.beginPath();
-          selected.trail.forEach(([lat, lng], index) => { const p = map.latLngToContainerPoint([lat, lng]); if (index) context.lineTo(p.x, p.y); else context.moveTo(p.x, p.y); });
-          context.stroke();
-        }
-      }
-      $('visible-count').textContent = `${count(visible)} on map`;
-    });
+    }
+    $('device-legend').textContent = this.dense ? 'Fleet density' : 'Device';
+    $('visible-count').textContent = `${count(visible)} on map`;
+  },
+  nearest(point) {
+    const { world, left, top } = this.screen();
+    let best = -1, distance = 13;
+    for (let position = 0; position < this.visibleCount; position++) {
+      const slot = this.visible[position], d = Math.hypot(this.x[slot] * world - left - point.x, this.y[slot] * world - top - point.y);
+      if (d < distance) { best = slot; distance = d; }
+    }
+    return best;
   },
 });
-const fleetCanvas = new FleetCanvas().addTo(map);
+const fleet = new FleetLayer().addTo(map);
 
-function queuePosition(item) {
-  if (demoPrefix && !item.device_id.startsWith(demoPrefix)) return;
-  const key = timestampKey(item.timestamp), previous = pendingPositions.get(item.device_id) || positions.get(item.device_id);
-  if (previous && previous.key >= key) return;
-  pendingPositions.set(item.device_id, { ...item, timestamp: isoTime(item.timestamp), key });
-}
-const positionItem = ([device_id, latitude, longitude, timestamp]) => ({ device_id, latitude, longitude, timestamp });
-function flushPositions() {
-  if (!pendingPositions.size) return;
-  for (const [id, item] of pendingPositions) {
-    const previous = positions.get(id);
-    if (id === selectedId) item.trail = [...(previous?.trail || []), [item.latitude, item.longitude]].slice(-30);
-    positions.set(id, item);
-  }
-  pendingPositions.clear();
-  fleetDirty = true;
-  $('device-count').textContent = count(positions.size);
-  $('map-empty').hidden = positions.size > 0;
-  updateInspector();
-  if (following && selectedId && positions.has(selectedId)) {
-    const item = positions.get(selectedId);
-    map.panTo([item.latitude, item.longitude], { animate: false });
-  }
-  fleetCanvas.redraw();
-}
-setInterval(flushPositions, 100);
-
-function renderFleet() {
-  if (currentView !== 'fleet' || !fleetDirty || $('fleet-list').contains(document.activeElement)) return;
-  fleetDirty = false;
-  const search = $('fleet-search').value.trim().toLowerCase(), filter = $('fleet-filter').value, now = Date.now();
-  const matches = [];
-  for (const item of positions.values()) {
-    const fresh = now - Date.parse(item.timestamp) < 60000;
-    if (search && !item.device_id.toLowerCase().includes(search)) continue;
-    if (filter === 'fresh' && !fresh || filter === 'stale' && fresh) continue;
-    matches.push(item);
-  }
-  const rows = matches.slice(0, 60).map((item) => {
-    const button = element('button', undefined, `fleet-row${selectedId === item.device_id ? ' selected' : ''}`);
+let fleetTimer;
+async function renderFleet() {
+  if (currentView !== 'fleet' || $('fleet-list').contains(document.activeElement)) return;
+  const search = $('fleet-search').value.trim(), filter = $('fleet-filter').value, version = epoch;
+  const { rows, matches } = await ask('list', { search, filter, limit: 60 });
+  if (version !== epoch) return;
+  const now = Date.now();
+  const buttons = rows.map((item) => {
+    const button = element('button', undefined, `fleet-row${selected?.device_id === item.device_id ? ' selected' : ''}`);
     button.type = 'button';
     const marker = element('span', undefined, 'fleet-icon'); marker.append(icon('fleet'));
-    const text = element('span'); text.append(element('strong', deviceName(item.device_id)), element('small', `${item.latitude.toFixed(4)}, ${item.longitude.toFixed(4)}`));
-    const when = element('span', age(item.timestamp), `fleet-age${now - Date.parse(item.timestamp) >= 60000 ? ' stale' : ''}`);
-    button.append(marker, text, when); button.onclick = () => selectDevice(item.device_id);
+    const text = element('span'); text.append(element('strong', item.device_id), element('small', `${item.latitude.toFixed(4)}, ${item.longitude.toFixed(4)}`));
+    const when = element('span', age(item.timestamp), `fleet-age${now - item.timestamp / 1000 >= 60000 ? ' stale' : ''}`);
+    button.append(marker, text, when); button.onclick = () => selectDevice({ slot: item.slot });
     return button;
   });
-  if (!rows.length) {
-    const empty = element('div', undefined, 'empty-state'); empty.append(icon('fleet'), element('h3', positions.size ? 'No matching devices' : 'Waiting for the first signal'), element('p', positions.size ? 'Try another device name or change the filter.' : 'Connect your devices or start the load generator. Live positions will appear on the map.'));
-    rows.push(empty);
+  if (!buttons.length) {
+    const empty = element('div', undefined, 'empty-state'); empty.append(icon('fleet'), element('h3', fleet.size ? 'No matching devices' : 'Waiting for the first signal'), element('p', fleet.size ? 'Try another device name or change the filter.' : 'Connect your devices or start the load generator. Live positions will appear on the map.'));
+    buttons.push(empty);
   }
-  $('fleet-list').replaceChildren(...rows);
-  $('fleet-list-caption').textContent = matches.length ? `${count(matches.length)} matching devices${matches.length > 60 ? ' · showing the first 60, search to narrow' : ''}` : '';
+  $('fleet-list').replaceChildren(...buttons);
+  $('fleet-list-caption').textContent = matches ? `${count(matches)} matching devices${matches > 60 ? ' · showing the first 60, search to narrow' : ''}` : '';
 }
-$('fleet-search').oninput = () => { fleetDirty = true; renderFleet(); };
-$('fleet-filter').onchange = () => { fleetDirty = true; renderFleet(); };
-setInterval(() => { fleetDirty = true; renderFleet(); updateInspector(); }, 1500);
-function selectDevice(id) {
-  const item = positions.get(id); if (!item) return;
-  selectedId = id; following = false; item.trail = [[item.latitude, item.longitude]];
-  $('inspector').hidden = false; $('follow-device').textContent = 'Follow on map';
-  map.setView([item.latitude, item.longitude], Math.max(map.getZoom(), 14));
-  fleetDirty = true; renderFleet(); updateInspector(); fleetCanvas.redraw();
+function scheduleFleet() { clearTimeout(fleetTimer); fleetTimer = setTimeout(renderFleet, 120); }
+$('fleet-search').oninput = scheduleFleet;
+$('fleet-filter').onchange = scheduleFleet;
+setInterval(() => { renderFleet(); updateInspector(); }, 1500);
+function selectDevice(target) {
+  following = false; $('follow-device').textContent = 'Follow on map';
+  worker.postMessage({ type: 'select', ...target });
+  $('inspector').hidden = false;
 }
 function updateInspector() {
-  if (!selectedId || !positions.has(selectedId)) return;
-  const item = positions.get(selectedId);
-  $('inspector-id').textContent = item.device_id;
-  $('inspector-lat').textContent = item.latitude.toFixed(6);
-  $('inspector-lng').textContent = item.longitude.toFixed(6);
-  $('inspector-time').textContent = new Date(item.timestamp).toLocaleTimeString();
-  $('inspector-age').textContent = age(item.timestamp);
+  if (!selected) return;
+  $('inspector-id').textContent = selected.device_id;
+  $('inspector-lat').textContent = selected.latitude.toFixed(6);
+  $('inspector-lng').textContent = selected.longitude.toFixed(6);
+  $('inspector-time').textContent = new Date(selected.timestamp / 1000).toLocaleTimeString();
+  $('inspector-age').textContent = age(selected.timestamp);
 }
-$('close-inspector').onclick = () => { selectedId = null; following = false; $('inspector').hidden = true; fleetDirty = true; renderFleet(); fleetCanvas.redraw(); };
+let centred = false;
+function receiveSelected(item) {
+  const first = !selected || selected.device_id !== item.device_id;
+  selected = item; updateInspector();
+  if (first && !centred) { centred = true; map.setView([item.latitude, item.longitude], Math.max(map.getZoom(), 14)); }
+  else if (following) map.panTo([item.latitude, item.longitude], { animate: false });
+}
+function closeInspector() { selected = null; centred = false; following = false; $('inspector').hidden = true; worker.postMessage({ type: 'select', slot: -1 }); fleet.redraw(); }
+$('close-inspector').onclick = closeInspector;
 $('follow-device').onclick = () => { following = !following; $('follow-device').textContent = following ? 'Stop following' : 'Follow on map'; };
 map.on('click', ({ latlng, containerPoint }) => {
   if (!$('zone-editor').hidden) {
     $('latitude').value = latlng.lat.toFixed(6); $('longitude').value = latlng.lng.toFixed(6); updateDraft(); return;
   }
-  const cluster = fleetCanvas.clusters?.find((entry) => entry.count > 3 && Math.hypot(entry.x - containerPoint.x, entry.y - containerPoint.y) < entry.radius + 3);
+  const cluster = fleet.dense && fleet.clusters.find((entry) => entry.total > 3 && Math.hypot(entry.x - containerPoint.x, entry.y - containerPoint.y) < entry.radius + 3);
   if (cluster) { map.setView(latlng, Math.min(map.getZoom() + 2, 18)); return; }
-  let nearest, distance = 13;
-  for (const item of positions.values()) {
-    if (!item.point) continue;
-    const d = item.point.distanceTo(containerPoint);
-    if (d < distance) { nearest = item.device_id; distance = d; }
-  }
-  if (nearest) selectDevice(nearest);
+  if (fleet.dense) return;
+  const slot = fleet.nearest(containerPoint);
+  if (slot >= 0) { centred = true; selectDevice({ slot }); }
 });
 map.on('moveend', () => {
   const centre = map.getCenter();
   $('map-location').textContent = Math.abs(centre.lat - 56.9496) < .15 && Math.abs(centre.lng - 24.1052) < .3 ? 'Riga, Latvia' : `${centre.lat.toFixed(3)}°, ${centre.lng.toFixed(3)}°`;
 });
-$('fit-fleet').onclick = () => {
-  if (!positions.size) { error('No device positions yet. Start reporting locations to see your fleet.'); return; }
-  map.fitBounds(L.latLngBounds([...positions.values()].map((item) => [item.latitude, item.longitude])), { padding: [60, 60], maxZoom: 15 });
+$('fit-fleet').onclick = async () => {
+  const bounds = await ask('bounds');
+  if (!bounds) { error('No device positions yet. Start the load generator or connect devices to see your fleet.'); return; }
+  map.fitBounds([[bounds.south, bounds.west], [bounds.north, bounds.east]], { padding: [60, 60], maxZoom: 15 });
 };
 
 function switchView(view) {
   currentView = view;
   document.querySelectorAll('[data-view]').forEach((button) => { const active = button.dataset.view === view; button.classList.toggle('selected', active); button.setAttribute('aria-pressed', String(active)); });
   ['fleet', 'zones', 'activity', 'brief'].forEach((name) => { $(`${name}-view`).hidden = name !== view; });
-  if (view === 'fleet') { fleetDirty = true; renderFleet(); }
+  if (view === 'fleet') renderFleet();
   if (view === 'activity') { unread = 0; $('activity-badge').hidden = true; renderAlerts(); }
   if (view === 'brief') loadInsights();
 }
@@ -232,53 +222,38 @@ function pulseZone(zoneId) {
   entry.circle.setStyle({ weight: 4, fillOpacity: .22 });
   setTimeout(() => entry.circle.setStyle({ weight: 1.5, fillOpacity: entry.zone.active ? .09 : .025 }), 220);
 }
-function receiveAlerts(items) {
-  items = items.map((item) => ({ ...item, timestamp: isoTime(item.timestamp) }));
-  if (demoPrefix) items = items.filter((item) => item.device_id.startsWith(demoPrefix));
-  alertTotal += items.length;
-  for (const item of items) {
-    const key = `${item.device_id}|${item.zone_id}`, at = Date.parse(item.timestamp), group = alertFeed.get(key);
-    if (group && at - group.last < EPISODE_GAP_MS) {
-      group.last = Math.max(group.last, at); group.reports++; alertFeed.delete(key); alertFeed.set(key, group);
-      continue;
-    }
-    alertFeed.delete(key);
-    alertFeed.set(key, { device_id: item.device_id, zone_id: item.zone_id, first: at, last: at, reports: 1, fresh: true });
-    if (currentView !== 'activity') unread++;
-    pulseZone(item.zone_id);
-  }
-  while (alertFeed.size > FEED_LIMIT) alertFeed.delete(alertFeed.keys().next().value);
+function receiveAlerts({ total, fresh, feed: episodes, pulses }) {
+  alertTotal = total; feed = episodes;
+  if (currentView !== 'activity') unread += fresh;
+  pulses.forEach(pulseZone);
   $('alert-count').textContent = count(alertTotal);
   $('activity-badge').textContent = unread > 99 ? '99+' : count(unread); $('activity-badge').hidden = !unread;
-  alertsDirty = true;
+  if (currentView === 'activity') renderAlerts();
 }
-setInterval(() => { if (alertsDirty && currentView === 'activity') renderAlerts(); }, 350);
-const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const clock = (micros) => new Date(micros / 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 function alertText(group) {
-  const zoneName = zones.get(group.zone_id)?.zone.name || (demoPrefix ? 'Depot' : 'geofence');
-  return [`${deviceName(group.device_id)} entered ${zoneName} · ${clock(group.first)}`, `inside since ${clock(group.first)} · ${count(group.reports)} report${group.reports === 1 ? '' : 's'}`];
+  const zoneName = zones.get(group.zone_id)?.zone.name || 'geofence';
+  return [`${group.device_id} entered ${zoneName} · ${clock(group.first)}`, `inside since ${clock(group.first)} · ${count(group.reports)} report${group.reports === 1 ? '' : 's'}`];
 }
 function renderAlerts() {
-  alertsDirty = false;
-  const rows = [...alertFeed.values()].reverse().map((group) => {
+  const rows = feed.map((group) => {
     const row = element('div', undefined, `alert-row${group.fresh ? ' fresh' : ''}`), symbol = element('span', undefined, 'alert-symbol'), content = element('div');
     const [title, detail] = alertText(group);
     symbol.append(icon('zone')); content.append(element('strong', title), element('p', detail));
-    const time = element('time', `last ${new Date(group.last).toLocaleTimeString()}`); time.dateTime = new Date(group.last).toISOString(); content.append(time); row.append(symbol, content);
-    group.fresh = false;
+    const time = element('time', `last ${new Date(group.last / 1000).toLocaleTimeString()}`); time.dateTime = isoTime(group.last); content.append(time); row.append(symbol, content);
     return row;
   });
   if (!rows.length) { const empty = element('div', undefined, 'empty-state'); empty.append(icon('activity'), element('h3', 'Nothing has crossed your radar yet'), element('p', 'When a device reports from inside one of your geofences, it appears here once and keeps counting while it stays inside.')); rows.push(empty); }
   $('alerts').replaceChildren(...rows);
 }
-$('clear-alerts').onclick = () => { alertFeed.clear(); unread = 0; $('activity-badge').hidden = true; renderAlerts(); };
+$('clear-alerts').onclick = () => { worker.postMessage({ type: 'clear-feed' }); feed = []; unread = 0; $('activity-badge').hidden = true; renderAlerts(); };
 
-async function loadZones(version = epoch, who = user, ws = socket) {
+async function loadZones(version = epoch, who = user) {
   const loadId = ++zoneLoadId, result = [];
   let cursor;
   do {
     const page = await api(`/geozones?limit=1000${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`, {}, who);
-    if (!current(version, who) || socket !== ws || loadId !== zoneLoadId) return;
+    if (!current(version, who) || loadId !== zoneLoadId) return;
     result.push(...page.items); cursor = page.next_cursor;
   } while (cursor);
   for (const entry of zones.values()) map.removeLayer(entry.circle);
@@ -300,13 +275,13 @@ function renderZones() {
     const action = (label, callback, className) => { const button = element('button', label, className); button.type = 'button'; button.onclick = async () => { const who = user, version = epoch; button.disabled = true; try { await callback(button); } catch (cause) { if (current(version, who)) error(cause.message); } finally { button.disabled = false; } }; actions.append(button); };
     action('Locate', async () => map.fitBounds(circle.getBounds(), { padding: [55, 55] }));
     action('Edit', async () => startEdit(zone));
-    action(zone.active ? 'Pause' : 'Resume', async () => { const who = user, version = epoch, ws = socket; await api(`/geozones/${zone.id}`, { method: 'PATCH', body: JSON.stringify({ active: !zone.active }) }, who); if (current(version, who)) await loadZones(version, who, ws); });
+    action(zone.active ? 'Pause' : 'Resume', async () => { const who = user, version = epoch; await api(`/geozones/${zone.id}`, { method: 'PATCH', body: JSON.stringify({ active: !zone.active }) }, who); if (current(version, who)) await loadZones(version, who); });
     action('Delete', async (button) => {
       if (button.dataset.confirm !== 'yes') { button.dataset.confirm = 'yes'; button.textContent = 'Confirm?'; setTimeout(() => { button.dataset.confirm = ''; button.textContent = 'Delete'; }, 4000); return; }
-      const who = user, version = epoch, ws = socket;
+      const who = user, version = epoch;
       await api(`/geozones/${zone.id}`, { method: 'DELETE' }, who);
       if (!current(version, who)) return;
-      if (editId === zone.id) resetEdit(); await loadZones(version, who, ws);
+      if (editId === zone.id) resetEdit(); await loadZones(version, who);
     }, 'delete-button');
     row.append(title, element('p', `${count(zone.radius_m)} m radius · version ${zone.version}`), actions); rows.push(row);
   }
@@ -334,13 +309,13 @@ $('new-zone').onclick = () => startEdit(); $('empty-create').onclick = () => sta
 ['latitude', 'longitude', 'radius'].forEach((id) => { $(id).oninput = updateDraft; });
 document.querySelectorAll('[data-radius]').forEach((button) => { button.onclick = () => { $('radius').value = button.dataset.radius; updateDraft(); }; });
 $('zone-form').onsubmit = async (event) => {
-  event.preventDefault(); const who = user, version = epoch, ws = socket, id = editId;
+  event.preventDefault(); const who = user, version = epoch, id = editId;
   const payload = { name: $('name').value.trim(), latitude: Number($('latitude').value), longitude: Number($('longitude').value), radius_m: Number($('radius').value) };
   if (!payload.name) { error('Give your geofence a name before saving.'); return; }
   $('save-zone').disabled = true;
   try {
     await api(id ? `/geozones/${id}` : '/geozones', { method: id ? 'PATCH' : 'POST', body: JSON.stringify(payload) }, who);
-    if (!current(version, who)) return; resetEdit(); await loadZones(version, who, ws);
+    if (!current(version, who)) return; resetEdit(); await loadZones(version, who);
   } catch (cause) { if (current(version, who)) error(cause.message); }
   finally { if (current(version, who)) $('save-zone').disabled = false; }
 };
@@ -363,59 +338,34 @@ async function loadInsights() {
 }
 $('refresh-insights').onclick = loadInsights;
 
-function status(state, text) {
+
+function status(state) {
+  const text = { live: 'Connected', connecting: 'Connecting', reconnecting: 'Reconnecting' }[state];
   $('status').className = `connection ${state}`; $('status-label').textContent = text;
   $('system-status').textContent = state === 'live' ? `Live stream connected · ${user}` : state === 'connecting' ? 'Connecting to the live stream' : 'Stream interrupted · reconnecting';
 }
-async function loadSnapshot(who, version, ws, generation) {
-  snapshotController?.abort(); snapshotController = new AbortController();
-  const controller = snapshotController, view = viewport();
-  const area = `south=${view.south}&west=${view.west}&north=${view.north}&east=${view.east}`;
-  try {
-    let cursor;
-    do {
-      const page = await api(`/devices/latest?limit=1000&${area}${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`, { signal: controller.signal }, who);
-      if (!connectionCurrent(ws, version, generation)) return;
-      page.items.forEach(queuePosition); cursor = page.next_cursor;
-    } while (cursor);
-  } catch (cause) { if (cause.name !== 'AbortError' && connectionCurrent(ws, version, generation)) error(cause.message); }
-}
+worker.onmessage = async ({ data }) => {
+  if (data.type === 'frame') {
+    fleet.update(data.size, data.slots, data.points);
+    $('device-count').textContent = count(data.size); $('map-empty').hidden = data.size > 0;
+    if (data.selected) receiveSelected(data.selected);
+  } else if (data.type === 'reset') { fleet.clear(); $('device-count').textContent = '0'; $('map-empty').hidden = false; }
+  else if (data.type === 'alerts') receiveAlerts(data);
+  else if (data.type === 'rate') $('update-rate').textContent = `${count(data.received)} updates / sec`;
+  else if (data.type === 'status') status(data.state);
+  else if (data.type === 'zones_changed') {
+    const who = user, version = epoch;
+    try { await loadZones(version, who); if (current(version, who) && currentView === 'brief') loadInsights(); }
+    catch (cause) { if (current(version, who)) error(cause.message); }
+  } else if (data.type === 'reply') { pending.get(data.request)?.(data.data); pending.delete(data.request); }
+  else if (data.type === 'error') error(data.message);
+};
 let viewportTimer;
-function sendViewport() {
+map.on('moveend', () => {
   clearTimeout(viewportTimer);
-  viewportTimer = setTimeout(() => { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'viewport', ...viewport() })); }, 200);
-}
-map.on('moveend', sendViewport);
-function connect(who, version) {
-  const generation = ++connectionVersion;
-  const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?user_id=${encodeURIComponent(who)}`);
-  socket = ws; status('connecting', 'Connecting');
-  ws.onmessage = async ({ data }) => {
-    if (!connectionCurrent(ws, version, generation)) return;
-    const message = JSON.parse(data);
-    if (message.type === 'ready') {
-      status('live', 'Connected');
-      ws.send(JSON.stringify({ type: 'viewport', ...viewport() }));
-      try { await loadZones(version, who, ws); } catch (cause) { if (connectionCurrent(ws, version, generation)) error(cause.message); }
-    } else if (message.type === 'subscribed') loadSnapshot(who, version, ws, generation);
-    else if (message.type === 'resync') {
-      loadSnapshot(who, version, ws, generation);
-      try { await loadZones(version, who, ws); } catch (cause) { if (connectionCurrent(ws, version, generation)) error(cause.message); }
-    }
-    else if (message.type === 'positions') { received += message.items.length; message.items.forEach((item) => queuePosition(positionItem(item))); }
-    else if (message.type === 'inside_report') receiveAlerts(message.items);
-    else if (message.type === 'zones_changed') {
-      try { await loadZones(version, who, ws); if (connectionCurrent(ws, version, generation) && currentView === 'brief') loadInsights(); }
-      catch (cause) { if (connectionCurrent(ws, version, generation)) error(cause.message); }
-    }
-  };
-  ws.onclose = () => {
-    if (!connectionCurrent(ws, version, generation)) return;
-    snapshotController?.abort(); status('reconnecting', 'Reconnecting');
-    setTimeout(() => { if (connectionCurrent(ws, version, generation)) connect(who, version); }, 1500);
-  };
-  ws.onerror = () => { if (connectionCurrent(ws, version, generation)) status('reconnecting', 'Reconnecting'); };
-}
+  viewportTimer = setTimeout(() => worker.postMessage({ type: 'viewport', view: viewport() }), 200);
+});
+function connect() { worker.postMessage({ type: 'connect', user, view: viewport() }); }
 function setIdentity() {
   $('user').value = user; $('identity-toggle').textContent = user.slice(0, 1).toUpperCase();
   $('workspace-label').textContent = `${user.slice(0, 1).toUpperCase()}${user.slice(1)}’s workspace`;
@@ -423,20 +373,19 @@ function setIdentity() {
 $('identity-toggle').onclick = () => { $('identity-panel').hidden = !$('identity-panel').hidden; if (!$('identity-panel').hidden) $('user').focus(); };
 $('identity').onsubmit = (event) => {
   event.preventDefault(); const next = $('user').value.trim(); if (!next || next === user) { $('identity-panel').hidden = true; return; }
-  demoPrefix = null; demoRunning = false; $('demo-all').hidden = true;
-  user = next; epoch++; socket?.close(); snapshotController?.abort(); resetEdit();
-  zoneLoadId++; alertTotal = 0; unread = 0; alertFeed.clear(); pendingPositions.clear();
+  user = next; epoch++; resetEdit(); closeInspector();
+  zoneLoadId++; alertTotal = 0; unread = 0; feed = [];
   $('alert-count').textContent = '0'; $('activity-badge').hidden = true; renderAlerts();
   for (const entry of zones.values()) map.removeLayer(entry.circle); zones.clear(); renderZones(); $('zone-count').textContent = '0';
   $('insights').replaceChildren(element('p', 'Loading the latest picture…', 'view-description')); $('save-zone').disabled = false;
   $('identity-panel').hidden = true; setIdentity();
   const url = new URL(location.href); url.searchParams.set('user', user); history.replaceState({}, '', url);
-  connect(user, epoch); if (currentView === 'brief') loadInsights();
+  connect(); if (currentView === 'brief') loadInsights();
 };
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   $('theme-toggle').setAttribute('aria-label', `Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`);
-  localStorage.setItem('fleetline-theme', theme); fleetCanvas.redraw();
+  localStorage.setItem('fleetline-theme', theme); fleet.redraw();
 }
 $('theme-toggle').onclick = () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
 applyTheme(localStorage.getItem('fleetline-theme') || 'light');
@@ -444,56 +393,41 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') { resetEdit(); $('identity-panel').hidden = true; }
   if (event.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) { event.preventDefault(); switchView('fleet'); $('fleet-search').focus(); }
 });
-setInterval(() => { $('update-rate').textContent = `${count(received - rateReceived)} updates / sec`; rateReceived = received; $('clock').textContent = new Date().toLocaleTimeString(); }, 1000);
+setInterval(() => { $('clock').textContent = new Date().toLocaleTimeString(); }, 1000);
+let acceptedRate = null;
 async function metrics() {
   try {
-    const data = await api('/stats'), fresh = data.freshness_p95_seconds;
+    const data = await api('/stats'), fresh = data.freshness_p95_seconds; acceptedRate = data.reports_per_second;
     $('latency').textContent = fresh === null ? 'Freshness —' : `Fresh p95 ${fresh < 1 ? `${Math.round(fresh * 1000)} ms` : `${fresh.toFixed(1)} s`}`;
   } catch { $('latency').textContent = 'Freshness unavailable'; }
 }
-setInterval(metrics, 5000); metrics(); setIdentity(); renderZones(); renderAlerts(); renderFleet(); connect(user, epoch);
+setInterval(metrics, 5000); metrics(); setIdentity(); renderZones(); renderAlerts(); renderFleet(); connect();
 
-function enterDemo(state) {
-  demoPrefix = state.device_prefix;
-  positions.clear(); pendingPositions.clear(); selectedId = null; following = false;
-  $('inspector').hidden = true; $('device-count').textContent = '0';
-  alertFeed.clear(); alertTotal = 0; unread = 0; $('alert-count').textContent = '0';
-  $('activity-badge').hidden = true; $('fleet-search').value = ''; $('fleet-filter').value = 'all';
-  fleetDirty = true; renderAlerts(); fleetCanvas.redraw();
-  $('demo-all').hidden = false;
-  map.setView([state.latitude, state.longitude], 16);
-  switchView('activity');
+const minutes = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+let loadRunning = false;
+function loadState(state) {
+  loadRunning = state.running;
+  $('load-toggle').textContent = state.running ? '■ Stop load' : '▶ Start load';
+  for (const id of ['load-devices', 'load-interval', 'load-duration', 'load-spread']) $(id).disabled = state.running;
+  if (state.running) {
+    const { load } = state, accepted = acceptedRate === null ? '—' : count(Math.round(acceptedRate));
+    $('load-status').textContent = `Running ${minutes(state.elapsed_seconds)} of ${minutes(load.duration_seconds)} · ${count(load.devices)} devices · offered ${count(Math.round(state.offered_reports_per_second))}/s · accepted ${accepted}/s`;
+  } else if (state.result) {
+    $('load-status').textContent = `Finished: ${count(state.result.acked)} of ${count(state.result.scheduled)} reports acknowledged, ${count(Math.round(state.result.acked_reports_per_second))}/s.`;
+  } else if (state.stopped_early) $('load-status').textContent = `Stopped after ${minutes(state.elapsed_seconds)}.`;
+  else $('load-status').textContent = 'Idle. Devices start around the map centre.';
 }
-function demoState(state) {
-  demoRunning = state.running;
-  $('demo-toggle').textContent = state.running ? '■ Stop demo' : '▶ Start demo';
-  $('demo-status').textContent = state.running
-    ? 'Running: trucks report every second, and each entry appears in Activity. Stops by itself after 2 minutes.'
-    : demoPrefix ? 'Stopped. The trucks hold their last positions. Start again to replay.' : 'One click starts it; nothing to set up.';
-}
-$('demo-toggle').onclick = async () => {
-  const who = user, version = epoch;
-  $('demo-toggle').disabled = true;
+document.querySelectorAll('[data-devices]').forEach((button) => { button.onclick = () => { $('load-devices').value = button.dataset.devices; }; });
+$('load-toggle').onclick = async () => {
+  $('load-toggle').disabled = true;
   try {
-    const state = await api(demoRunning ? '/demo/stop' : '/demo/start', {method: 'POST'}, who);
-    if (!current(version, who)) return;
-    if (state.running) { enterDemo(state); await loadZones(version, who); }
-    demoState(state);
-  } catch (cause) { if (current(version, who)) error(cause.message); }
-  finally { if (current(version, who)) $('demo-toggle').disabled = false; }
+    const centre = map.getCenter();
+    const body = { devices: Number($('load-devices').value), interval_seconds: Number($('load-interval').value), duration_seconds: Number($('load-duration').value) * 60, spread_km: Number($('load-spread').value), latitude: centre.lat, longitude: ((centre.lng + 180) % 360 + 360) % 360 - 180 };
+    loadState(await api(loadRunning ? '/loadgen/stop' : '/loadgen/start', loadRunning ? { method: 'POST' } : { method: 'POST', body: JSON.stringify(body) }));
+  } catch (cause) { error(cause.message); }
+  finally { $('load-toggle').disabled = false; }
 };
-$('demo-all').onclick = () => {
-  demoPrefix = null; positions.clear(); pendingPositions.clear();
-  $('demo-all').hidden = true; $('device-count').textContent = '0'; fleetDirty = true;
-  switchView('fleet'); connect(user, epoch); refreshDemo();
-};
-async function refreshDemo() {
-  const who = user, version = epoch;
-  try {
-    const state = await api('/demo', {}, who);
-    if (!current(version, who)) return;
-    if (state.running && !demoPrefix) { enterDemo(state); await loadZones(version, who); }
-    demoState(state);
-  } catch (cause) { if (current(version, who)) $('demo-status').textContent = 'Could not read the demo state. Try the start button.'; }
+async function refreshLoad() {
+  try { loadState(await api('/loadgen')); } catch { $('load-status').textContent = 'The load generator is not reachable.'; }
 }
-setInterval(refreshDemo, 2000); refreshDemo();
+setInterval(refreshLoad, 2000); refreshLoad();

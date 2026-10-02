@@ -47,6 +47,5 @@ class Settings(BaseSettings):
     metrics_port: int = Field(default=9100, ge=0)
     prometheus_url: str = "http://prometheus:9090"
 
-    demo_devices: int = Field(default=6, ge=1)
-    demo_seconds: int = Field(default=120, ge=1)
-    demo_limit: int = Field(default=4, ge=1)
+    loadgen_target_url: str = "http://edge:8000"
+    loadgen_prefix: str = "load"

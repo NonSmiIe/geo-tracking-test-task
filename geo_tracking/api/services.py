@@ -10,7 +10,6 @@ from starlette.requests import HTTPConnection
 
 from geo_tracking.bus import Subjects
 from geo_tracking.db import Database
-from geo_tracking.demo import Demo
 from geo_tracking.ingest import Ingest
 from geo_tracking.schemas import Identifier
 from geo_tracking.settings import Settings
@@ -26,7 +25,6 @@ class Services:
     subjects: Subjects
     prometheus: aiohttp.ClientSession
     ingest: Ingest
-    demo: Demo
 
 
 async def zones_changed(nats: Client, subjects: Subjects, user_id: str) -> None:
