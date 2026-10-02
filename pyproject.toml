@@ -30,6 +30,7 @@ dev = [
     "ruff>=0.9,<1",
     "mypy>=1.13",
     "vulture>=2.13",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.pytest.ini_options]
@@ -57,3 +58,7 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["geo_tracking.processor"]
 disallow_subclassing_any = false
+
+[tool.coverage.run]
+concurrency = ["thread", "greenlet"]
+source = ["geo_tracking"]

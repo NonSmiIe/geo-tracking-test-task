@@ -44,3 +44,17 @@ def test_a_stopped_run_ends_at_once_and_can_start_again(loadgen) -> None:
 def test_load_outside_the_bounds_is_refused(loadgen) -> None:
     for change in ({"devices": 500_001}, {"interval_seconds": 0.5}, {"duration_seconds": 3601}):
         assert loadgen.post("/loadgen/start", json=LOAD | change).status_code == 422
+
+
+def test_an_idle_generator_reports_nothing_running_and_stops_cleanly(loadgen) -> None:
+    assert loadgen.get("/health/live").json() == {"status": "alive"}
+    assert loadgen.get("/loadgen").json() == {"running": False}
+    assert loadgen.post("/loadgen/stop").json() == {"running": False}
+
+
+def test_a_run_reports_its_offered_rate_and_echoes_the_load(loadgen) -> None:
+    load = LOAD | {"devices": 30, "interval_seconds": 3, "latitude": 10, "longitude": -20}
+    started = loadgen.post("/loadgen/start", json=load).json()
+    assert started["offered_reports_per_second"] == 10
+    assert started["load"] == load and started["result"] is None
+    assert loadgen.post("/loadgen/start", json={"devices": 1, "colour": "red"}).status_code == 422
