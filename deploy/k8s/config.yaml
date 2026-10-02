@@ -4,6 +4,8 @@ metadata:
   name: fleetline
 data:
   GEO_KAFKA_BOOTSTRAP: fleetline-kafka-bootstrap.kafka:9092
+  GEO_KAFKA_TOPIC: reports
+  GEO_KAFKA_GROUP: processors
   GEO_KAFKA_REPLICATION: "3"
   GEO_NATS_SERVERS: nats://nats.nats:4222
   GEO_PROMETHEUS_URL: http://prometheus-operated.monitoring:9090

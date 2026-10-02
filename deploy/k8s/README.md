@@ -14,7 +14,7 @@ What the manifests encode, and why:
 - **Liveness only, no readiness probe.** It matches compose. A readiness check that depends on Kafka took every saturated replica out of rotation at 300k devices (see the main README).
 - **`terminationGracePeriodSeconds: 45`.** Processors finish their in-flight batch and commit offsets before releasing partitions on SIGTERM, and the publish deadline is 30 s.
 - **A processor PDB with `maxUnavailable: 1`.** Each eviction is one rebalance.
-- **No HPA on processors.** Partitions (24) cap useful replicas, and lag, not CPU, is the signal. Scale them with KEDA's Kafka scaler on group `processors`, capped at the partition count.
+- **Processors scale on Kafka lag with KEDA**, not on CPU. The `ScaledObject` targets 20,000 records of lag per replica, which is about 3 s of one processor's measured throughput, with at least 2 replicas. KEDA's default `allowIdleConsumers: false` caps replicas at the topic's partition count, so the manifest does not repeat it. Every scale event is a rebalance, so scale-up can double every 30 s but scale-down waits 5 minutes and removes at most 2 pods a minute. The scaler reads bootstrap, group and topic from the same ConfigMap keys the processors use. KEDA itself must be installed in the cluster.
 - **An HPA on api by CPU.** Ingest cost is CPU per report.
 - **The ingress routes `/ws` to gateways** with hour-long timeouts, and refuses `/metrics`, the same as the HAProxy edge.
 
@@ -22,5 +22,6 @@ Validate without a cluster:
 
 ```bash
 docker run --rm -v "$PWD/deploy/k8s:/k:ro" registry.k8s.io/kubectl:v1.34.1 kustomize /k > /tmp/fleetline.yaml
-docker run --rm -i ghcr.io/yannh/kubeconform:v0.7.0 -strict -summary < /tmp/fleetline.yaml
+docker run --rm -i ghcr.io/yannh/kubeconform:v0.7.0 -strict -summary -schema-location default \
+  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' < /tmp/fleetline.yaml
 ```

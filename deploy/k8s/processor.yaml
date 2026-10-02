@@ -3,7 +3,6 @@ kind: Deployment
 metadata:
   name: processor
 spec:
-  replicas: 8
   selector:
     matchLabels: {app: processor}
   template:
@@ -61,3 +60,33 @@ spec:
   selector: {app: processor}
   ports:
     - {name: metrics, port: 9100, targetPort: metrics}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: processor
+spec:
+  scaleTargetRef: {name: processor}
+  minReplicaCount: 2
+  maxReplicaCount: 64
+  pollingInterval: 15
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - {type: Percent, value: 100, periodSeconds: 30}
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - {type: Pods, value: 2, periodSeconds: 60}
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServersFromEnv: GEO_KAFKA_BOOTSTRAP
+        consumerGroupFromEnv: GEO_KAFKA_GROUP
+        topicFromEnv: GEO_KAFKA_TOPIC
+        lagThreshold: "20000"
+        offsetResetPolicy: earliest
+        allowIdleConsumers: "false"
