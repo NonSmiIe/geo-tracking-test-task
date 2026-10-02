@@ -292,8 +292,6 @@ def consumer(settings: Settings) -> AIOKafkaConsumer:
         enable_auto_commit=False,
         auto_offset_reset="earliest",
         max_poll_records=settings.processor_batch,
-        fetch_min_bytes=16777216,
-        fetch_max_wait_ms=settings.processor_batch_window_ms,
         fetch_max_bytes=16777216,
         max_partition_fetch_bytes=4194304,
     )

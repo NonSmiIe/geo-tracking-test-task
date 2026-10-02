@@ -117,7 +117,7 @@ Frames:
 | HTTP batch | 200 reports |
 | In-flight produces per api process (HTTP and sockets) | 8,192 |
 | In-flight produces per device socket | 1,024 |
-| Processor batch | up to 10,000 records across owned partitions; the broker holds each fetch for a 100 ms window, so a batch is about 100 ms of traffic |
+| Processor batch | up to 10,000 records across owned partitions, self-clocked: a batch is what arrived while the previous one was written. A 100 ms fetch window doubled batch size at 300k without lowering the cost per row, doubled Kafka CPU and raised p95 to 1,071 ms (`rung-300k-batch-window`) |
 | NATS frame | at most 256 KiB, positions and alerts alike |
 | Database pool | 5 per api process, 4 per processor, no overflow, 1 s checkout |
 | Statement timeout | 2 s |
@@ -207,6 +207,7 @@ Apple M4 Pro; the Docker VM has 14 CPUs and 8 GB, shared with unrelated containe
 | 500,000 · 300 s, librdkafka producer | 99,682 | 30,000,000 / 30,000,000 | 88 / 100+ s | 4 × 64%; PostgreSQL 171% | 8 × 17% | [failed: processors commit 58k/s](evidence/capacity/rung-500k.json) |
 | 300,000 · 300 s, one lane per partition, 4 transactions per processor, exact timestamps | 59,935 | 18,000,000 / 18,000,000 | 421 / 1,082 / 1,598 ms | 4 × 56%; PostgreSQL 151% | 8 × 23% | [failed: p95 over 1 s](evidence/capacity/rung-300k-exact-timestamps.json) |
 | 300,000 · 300 s, one writer per processor | 59,986 | 18,000,000 / 18,000,000 | 314 / 876 / 1,286 ms | 4 × 52%; PostgreSQL 125% | 8 × 19% | [passed](evidence/capacity/rung-300k-one-writer.json) |
+| 300,000 · 300 s, one writer, 100 ms fetch window | 59,992 | 18,000,000 / 18,000,000 | 322 / 1,071 / 1,583 ms | 4 × 57%; PostgreSQL 132% | 8 × 22% | [failed: p95 over 1 s; window reverted](evidence/capacity/rung-300k-batch-window.json) |
 | 500,000 · 300 s, one lane per partition | 99,757 | 30,000,000 / 30,000,000 | 67 / 95 s | 4 × 80%; PostgreSQL 282% of 300% | 8 × 26% | [failed: PostgreSQL at its CPU limit; generator late](evidence/capacity/rung-500k-s4.json) |
 
 **The ceiling on this laptop is between 300,000 and 500,000 devices, and it is the machine, not a tier.** At 500k the server containers used 10.8 cores of 14 (median), and the generator could not hold its own schedule: 126,796 reports were more than 100 ms late, which fails the workload check. `top` showed the host at 99% during that run (observed, not stored). [An idle-database probe](evidence/capacity/upsert-probe.txt) puts the upsert at 11.6 ms per 2,000 rows (5.8 µs per row); under that contention it averaged 143 ms ([statements](evidence/capacity/rung-500k-s4-statements.txt)). Going further needs more hardware: a second machine for the load, or the per-partition shards described in [Scaling out](#scaling-out). Two 300k runs are not in the table because they measured the harness, not the service: one on a table holding 2M rows left by earlier runs: a cold 2,000-id watermark read took 159 ms against 14 ms warm, an observation not stored ([kept](evidence/capacity/rung-300k-p8-progress.json)). In the other, the edge logged "backend 'api' has no server available" while a Kafka-probing readiness check timed out on every saturated replica; the logs were not preserved ([kept](evidence/capacity/rung-300k-h5.json); that check is now deleted). In every passed run all four sessions reconciled exactly, including the probe viewport, which received precisely the positions in its subscribed tiles. The earlier single-process design's 10,000-device runs remain in `evidence/` under [policy v2](evidence/acceptance-policy.md).
@@ -228,6 +229,9 @@ Each scenario runs 100,000 devices for 180 s and breaks one container about 60 s
 | edge restart | 3,567 | 156 ms | all reconnected and resumed | [passed](evidence/faults/s8-edge-restart.json) |
 | half the processors stopped at 60 s, started at 120 s (two rebalances) | 0 | 207 ms | open; 1,089 re-emitted | [passed](evidence/faults/s9-processor-rebalance.json) |
 | the same, revoked lanes finish their batch before handing over | 0 | 185 ms | open; 48 re-emitted | [passed](evidence/faults/s9-processor-rebalance-graceful.json) |
+| processor killed, one writer per processor | 0 | 186 ms | open or resumed | [passed](evidence/faults/s3-processor-kill-one-writer.json) |
+| processor paused (zombie), one writer per processor | 0 | 120 ms | open or resumed | [passed](evidence/faults/s4-processor-pause-one-writer.json) |
+| half the processors stopped then started, one writer per processor, handover restarts stages past the deadline | 0 | 139 ms | open or resumed | [passed](evidence/faults/s9-processor-rebalance-batch-window.json) |
 
 No scenario lost an acknowledged report. Re-emitted events are the replay of batches committed but not yet offset-committed, so delivery is at least once.
 
