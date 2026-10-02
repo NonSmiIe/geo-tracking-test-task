@@ -55,8 +55,18 @@ def numbered(offsets: dict[TopicPartition, int]) -> dict[int, int]:
     return {tp.partition: offset for tp, offset in offsets.items()}
 
 
-def frame(kind: str, items: list[Any]) -> bytes:
-    return orjson.dumps({"type": kind, "items": items})
+def frames(kind: str, items: list[Any], limit: int) -> list[bytes]:
+    head, tail = b'{"type":"' + kind.encode() + b'","items":[', b"]}"
+    chunks: list[list[bytes]] = [[]]
+    size = 0
+    for item in items:
+        encoded = orjson.dumps(item)
+        if chunks[-1] and size + len(encoded) > limit:
+            chunks.append([])
+            size = 0
+        chunks[-1].append(encoded)
+        size += len(encoded) + 1
+    return [head + b",".join(chunk) + tail for chunk in chunks if chunk]
 
 
 class Processor(ConsumerRebalanceListener):
@@ -72,12 +82,12 @@ class Processor(ConsumerRebalanceListener):
         self.topic_id = topic_id
         self.subjects = Subjects(settings.subject_prefix)
         self.owned: set[TopicPartition] = set()
-        self.consuming = asyncio.Event()
         self.settled = asyncio.Event()
         self.settled.set()
         self.inflight = 0
         self.polled = time()
         self.outbox: asyncio.Queue[Batch] = asyncio.Queue(maxsize=1)
+        self.stages: list[asyncio.Task[None]] = []
 
     def unique(self, records: list[Record], seen: set[tuple[str, int]]) -> list[Record]:
         kept = []
@@ -138,14 +148,17 @@ class Processor(ConsumerRebalanceListener):
                     "zone_version": match["zone_version"],
                 }
             )
-        messages = [(subject, frame("positions", items)) for subject, items in positions.items()]
-        size = self.settings.alert_frame_items
-        for user_id, items in alerts.items():
-            subject = self.subjects.alerts(user_id)
-            messages += [
-                (subject, frame("inside_report", items[start : start + size]))
-                for start in range(0, len(items), size)
-            ]
+        limit = self.settings.frame_bytes
+        messages = [
+            (subject, payload)
+            for subject, items in positions.items()
+            for payload in frames("positions", items, limit)
+        ]
+        messages += [
+            (self.subjects.alerts(user_id), payload)
+            for user_id, items in alerts.items()
+            for payload in frames("inside_report", items, limit)
+        ]
         return Batch(
             offsets={tp: items[-1].offset + 1 for tp, items in fetched.items()},
             messages=messages,
@@ -183,13 +196,12 @@ class Processor(ConsumerRebalanceListener):
 
     async def consume(self) -> None:
         while True:
-            await self.consuming.wait()
             fetched = await self.consumer.getmany(
                 timeout_ms=self.settings.processor_poll_ms,
                 max_records=self.settings.processor_batch,
             )
             self.polled = time()
-            if not fetched or not self.consuming.is_set():
+            if not fetched:
                 continue
             self.begin()
             try:
@@ -204,6 +216,7 @@ class Processor(ConsumerRebalanceListener):
                 await asyncio.sleep(self.settings.processor_retry_seconds)
                 continue
             await self.outbox.put(batch)
+            self.polled = time()
 
     async def deliver(self) -> None:
         while True:
@@ -223,44 +236,53 @@ class Processor(ConsumerRebalanceListener):
                 COMMITS_LOST.inc()
             self.end()
 
+    def start(self) -> None:
+        self.outbox = asyncio.Queue(maxsize=1)
+        self.inflight = 0
+        self.settled.set()
+        self.polled = time()
+        self.stages = [asyncio.create_task(self.consume()), asyncio.create_task(self.deliver())]
+
+    async def halt(self) -> None:
+        for stage in self.stages:
+            stage.cancel()
+        await asyncio.gather(*self.stages, return_exceptions=True)
+
     async def run(self, stopping: asyncio.Event) -> None:
         stall = self.settings.publish_deadline_seconds + 10
-        stages = [asyncio.create_task(self.consume()), asyncio.create_task(self.deliver())]
+        self.start()
         try:
             while not stopping.is_set():
-                for stage in stages:
+                for stage in self.stages:
                     if stage.done():
                         stage.result()
                 PARTITIONS.set(len(self.owned))
-                if self.consuming.is_set() and time() - self.polled > stall:
+                if time() - self.polled > stall:
                     raise Stalled(f"no Kafka poll for {time() - self.polled:.0f} s")
                 await asyncio.sleep(0.1)
             await self.on_partitions_revoked(set(self.owned))
         finally:
-            for stage in stages:
-                stage.cancel()
-            await asyncio.gather(*stages, return_exceptions=True)
+            await self.halt()
 
     async def on_partitions_assigned(self, assigned: set[TopicPartition]) -> None:
         logger.info(
             "partitions assigned", extra={"partitions": sorted(p.partition for p in assigned)}
         )
         self.owned = set(assigned)
-        self.polled = time()
-        self.consuming.set()
 
     async def on_partitions_revoked(self, revoked: set[TopicPartition]) -> None:
         logger.info(
             "partitions revoked", extra={"partitions": sorted(p.partition for p in revoked)}
         )
-        self.consuming.clear()
         self.owned -= revoked
         try:
             await asyncio.wait_for(
                 self.settled.wait(), timeout=self.settings.publish_deadline_seconds
             )
         except TimeoutError:
-            logger.warning("handing over with a batch in flight; the new owner replays it")
+            logger.warning("batches still in flight at handover; dropped for the new owner")
+            await self.halt()
+            self.start()
 
 
 def consumer(settings: Settings) -> AIOKafkaConsumer:
@@ -270,6 +292,8 @@ def consumer(settings: Settings) -> AIOKafkaConsumer:
         enable_auto_commit=False,
         auto_offset_reset="earliest",
         max_poll_records=settings.processor_batch,
+        fetch_min_bytes=16777216,
+        fetch_max_wait_ms=settings.processor_batch_window_ms,
         fetch_max_bytes=16777216,
         max_partition_fetch_bytes=4194304,
     )

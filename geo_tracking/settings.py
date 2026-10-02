@@ -30,9 +30,10 @@ class Settings(BaseSettings):
 
     processor_batch: int = Field(default=10000, ge=1)
     processor_poll_ms: int = Field(default=50, ge=1)
+    processor_batch_window_ms: int = Field(default=100, ge=1)
     processor_retry_seconds: float = Field(default=1, gt=0)
     publish_deadline_seconds: float = Field(default=30, gt=0)
-    alert_frame_items: int = Field(default=1000, ge=1)
+    frame_bytes: int = Field(default=262144, ge=1024)
 
     max_zones_per_user: int = Field(default=1000, ge=1)
     max_zone_overlap: int = Field(default=50, ge=0)
