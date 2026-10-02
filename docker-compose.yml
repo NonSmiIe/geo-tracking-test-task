@@ -144,7 +144,6 @@ services:
     entrypoint: [python, -m, geo_tracking.processor]
     environment:
       <<: *env
-      GEO_PROCESSOR_TRANSACTIONS: ${PROCESSOR_TRANSACTIONS:-4}
     depends_on: *ready
     healthcheck:
       <<: *health

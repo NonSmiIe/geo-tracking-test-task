@@ -5,57 +5,73 @@ from typing import Any
 import pytest
 from aiokafka import TopicPartition
 
-from geo_tracking.processor import Lane, LaneStalled, Processor
+from geo_tracking.processor import Processor, Stalled
 from geo_tracking.settings import Settings
 
 PARTITION = TopicPartition("reports", 0)
 
 
-class HeldFetch:
-    def __init__(self) -> None:
+class Fetch:
+    def __init__(self, result: dict[Any, Any] | None = None, hold: bool = True) -> None:
+        self.result = result or {}
         self.fetching = asyncio.Event()
         self.release = asyncio.Event()
+        if not hold:
+            self.release.set()
 
-    async def getmany(self, *partitions: TopicPartition, **options: Any) -> dict[Any, Any]:
+    async def getmany(self, **options: Any) -> dict[Any, Any]:
         self.fetching.set()
         await self.release.wait()
-        return {}
+        await asyncio.sleep(0.01)
+        return self.result
 
 
-def processor(consumer: Any = None) -> Processor:
+def processor(consumer: Any) -> Processor:
     return Processor(Settings(publish_deadline_seconds=1), None, None, consumer, "t")  # type: ignore[arg-type]
 
 
-def idle_lane(polled: float) -> Lane:
-    lane = Lane(PARTITION, polled=polled)
-    lane.task = asyncio.create_task(asyncio.Event().wait())
-    return lane
-
-
-async def test_a_lane_that_stops_polling_takes_the_processor_down() -> None:
-    stalled = processor()
-    stalled.lanes[PARTITION] = idle_lane(time() - 60)
-    with pytest.raises(LaneStalled):
+async def test_a_processor_that_stops_polling_goes_down() -> None:
+    stalled = processor(Fetch())
+    await stalled.on_partitions_assigned({PARTITION})
+    stalled.polled = time() - 60
+    with pytest.raises(Stalled):
         await asyncio.wait_for(stalled.run(asyncio.Event()), 2)
-    stalled.lanes[PARTITION].task.cancel()
 
 
-async def test_lanes_that_keep_polling_keep_the_processor_up() -> None:
-    healthy = processor()
-    healthy.lanes[PARTITION] = lane = idle_lane(time())
+async def test_a_processor_that_keeps_polling_stays_up() -> None:
+    healthy = processor(Fetch(hold=False))
+    await healthy.on_partitions_assigned({PARTITION})
     stopping = asyncio.Event()
     asyncio.get_running_loop().call_later(0.5, stopping.set)
-    await asyncio.wait_for(healthy.run(stopping), 3)
-    assert lane.task.cancelled()
+    await asyncio.wait_for(healthy.run(stopping), 2)
+    assert healthy.owned == set()
 
 
-async def test_a_lane_revoked_mid_fetch_leaves_nothing_for_the_watchdog() -> None:
-    consumer = HeldFetch()
-    revoking = processor(consumer)
-    await revoking.on_partitions_assigned({PARTITION})
+async def test_revoke_waits_for_the_batch_in_flight() -> None:
+    handing = processor(Fetch())
+    await handing.on_partitions_assigned({PARTITION})
+    handing.begin()
+    revoked = asyncio.create_task(handing.on_partitions_revoked({PARTITION}))
+    await asyncio.sleep(0.1)
+    assert not revoked.done()
+    handing.end()
+    await asyncio.wait_for(revoked, 1)
+
+
+async def test_records_fetched_across_a_revoke_are_left_to_the_new_owner() -> None:
+    consumer = Fetch({PARTITION: ["record"]})
+    leaving = processor(consumer)
+
+    async def write(fetched: Any) -> Any:
+        raise AssertionError("a revoked partition was written")
+
+    leaving.write = write  # type: ignore[method-assign]
+    await leaving.on_partitions_assigned({PARTITION})
+    consuming = asyncio.create_task(leaving.consume())
     await consumer.fetching.wait()
-    revoked = asyncio.create_task(revoking.on_partitions_revoked({PARTITION}))
-    await asyncio.sleep(0)
+    await leaving.on_partitions_revoked({PARTITION})
     consumer.release.set()
-    await revoked
-    assert revoking.lanes == {}
+    await asyncio.sleep(0.1)
+    assert not consuming.done()
+    assert leaving.inflight == 0
+    consuming.cancel()
