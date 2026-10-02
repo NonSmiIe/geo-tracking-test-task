@@ -3,7 +3,7 @@ from collections.abc import Iterator
 import httpx
 import pytest
 
-from geo_tracking.loadgen import create_loadgen_app
+from geo_tracking.loadgen import Load, create_loadgen_app
 from tests.helpers import wait_for
 from tests.stack import Server
 
@@ -58,3 +58,11 @@ def test_a_run_reports_its_offered_rate_and_echoes_the_load(loadgen) -> None:
     assert started["offered_reports_per_second"] == 10
     assert started["load"] == load and started["result"] is None
     assert loadgen.post("/loadgen/start", json={"devices": 1, "colour": "red"}).status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("devices", "interval", "processes"),
+    [(1, 60, 1), (4_000, 1, 1), (20_000, 2, 3), (100_000, 5, 5), (300_000, 5, 8), (80_000, 60, 2)],
+)
+def test_generator_processes_scale_with_rate_and_fleet_size(devices, interval, processes) -> None:
+    assert Load(devices=devices, interval_seconds=interval).processes == processes

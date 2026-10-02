@@ -20,6 +20,8 @@ from geo_tracking.settings import Settings
 
 GENERATOR = Path(__file__).resolve().parents[1] / "generator.py"
 DEVICES_PER_PROCESS = 40_000
+REPORTS_PER_PROCESS = 4_000
+MAX_PROCESSES = 8
 
 
 class Load(BaseModel):
@@ -30,6 +32,15 @@ class Load(BaseModel):
     spread_km: Annotated[float, Field(gt=0, le=2000)] = 50
     latitude: Latitude = RIGA[0]
     longitude: Longitude = RIGA[1]
+
+    @property
+    def rate(self) -> float:
+        return self.devices / self.interval_seconds
+
+    @property
+    def processes(self) -> int:
+        needed = max(self.devices / DEVICES_PER_PROCESS, self.rate / REPORTS_PER_PROCESS)
+        return min(MAX_PROCESSES, math.ceil(needed))
 
 
 class Run:
@@ -56,7 +67,7 @@ class Run:
         return {
             "running": running,
             "load": self.load.model_dump(),
-            "offered_reports_per_second": self.load.devices / self.load.interval_seconds,
+            "offered_reports_per_second": self.load.rate,
             "started_at": self.started,
             "elapsed_seconds": (self.stopped or time.time()) - self.started,
             "result": self.result,
@@ -79,7 +90,6 @@ class LoadGenerator:
             if self.run and self.run.process.returncode is None:
                 raise HTTPException(409, "load_running")
             output = Path(tempfile.mkdtemp(prefix="loadgen-")) / "result.json"
-            processes = max(1, min(8, math.ceil(load.devices / DEVICES_PER_PROCESS)))
             process = await asyncio.create_subprocess_exec(
                 sys.executable,
                 str(GENERATOR),
@@ -87,7 +97,7 @@ class LoadGenerator:
                 *("--devices", str(load.devices), "--interval", str(load.interval_seconds)),
                 *("--duration", str(load.duration_seconds), "--spread-km", str(load.spread_km)),
                 *("--latitude", str(load.latitude), "--longitude", str(load.longitude)),
-                *("--processes", str(processes), "--connections", "4"),
+                *("--processes", str(load.processes), "--connections", "4"),
                 *("--prefix", self.settings.loadgen_prefix, "--output", str(output)),
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
