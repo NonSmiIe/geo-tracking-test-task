@@ -6,6 +6,7 @@ from typing import Any, cast
 from fastapi import FastAPI, Response, WebSocket
 from starlette.requests import HTTPConnection
 
+from geo_tracking.api.context import RequestContext
 from geo_tracking.bus import connect_nats
 from geo_tracking.gateway import Gateway
 from geo_tracking.logs import configure
@@ -39,6 +40,7 @@ def create_gateway_app(settings: Settings | None = None) -> FastAPI:
             await nats.drain()
 
     app = FastAPI(title="Fleetline gateway", lifespan=lifespan)
+    app.add_middleware(RequestContext)
 
     def gateway(connection: HTTPConnection) -> Gateway:
         return cast(Gateway, connection.app.state.gateway)

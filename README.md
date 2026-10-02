@@ -186,6 +186,8 @@ Prometheus (`127.0.0.1:9097`) scrapes every api, gateway and processor replica, 
 
 Logs are one JSON object per line on every role, with `role`, `level`, `logger`, `event` and the event's context. Processors log partition assignments and revocations, failed batches with partition and offset, lost offset commits, and their exit before a restart. Gateways log evictions (user, reason, queued bytes) and resyncs. librdkafka and aiokafka are routed through the same formatter. For example, `docker compose logs --no-log-prefix processor | jq 'select(.event == "partitions assigned")'` shows every rebalance.
 
+Every request through the edge carries an `X-Request-ID`. The edge keeps a client's id if it matches `[A-Za-z0-9._-]{1,128}`, otherwise mints a UUID, returns it on every response, its own `429` and `404` included, and writes one JSON access line per request with id, path (never the query, which carries `user_id` on `/ws`), status, latency, backend server and termination state. api and gateway lines written while serving that request, or that dashboard socket, carry the same `request_id`. So `docker compose logs --no-log-prefix edge api gateway | jq 'select(.request_id == "…")'` follows one request across tiers.
+
 Repartitioning (more than 24 processors) is a new topic, not `--alter`: create `reports-v2` with more partitions, point the api at it, and let the processors drain `reports` before moving their group. Keyed ordering per device holds only within one topic.
 
 ## Measured results

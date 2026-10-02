@@ -1,9 +1,11 @@
 import logging
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
 
 import orjson
 
+REQUEST_ID: ContextVar[str | None] = ContextVar("request_id", default=None)
 RECORD_FIELDS = set(logging.makeLogRecord({}).__dict__) | {"message", "asctime"}
 
 
@@ -20,6 +22,8 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "event": record.getMessage(),
         }
+        if (request_id := REQUEST_ID.get()) is not None:
+            entry["request_id"] = request_id
         entry.update({k: v for k, v in record.__dict__.items() if k not in RECORD_FIELDS})
         if record.exc_info:
             entry["error"] = self.formatException(record.exc_info)
