@@ -1,0 +1,10 @@
+ calls | total_ms | mean_ms | rows_per_call |                              q                               
+-------+----------+---------+---------------+--------------------------------------------------------------
+ 41611 |   334250 |    8.03 |           432 | INSERT INTO device_latest AS device (device_id, position, re
+ 41611 |   161608 |    3.88 |           865 | WITH samples AS MATERIALIZED ( SELECT ordinality - $3 AS rep
+ 41611 |     1691 |    0.04 |             2 | SELECT partition, persisted FROM consumer_progress WHERE top
+ 33291 |     1607 |    0.05 |             2 | INSERT INTO consumer_progress AS progress (topic_id, partiti
+   335 |      902 |    2.69 |             1 | SELECT pg_database_size($1)
+    67 |      293 |    4.37 |           288 | SELECT name, setting, COALESCE(unit, $1), short_desc, vartyp
+(6 rows)
+
