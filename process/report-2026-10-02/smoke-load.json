@@ -1,0 +1,263 @@
+{
+  "started_at": "2026-10-01T14:13:33.789112+00:00",
+  "fixture": {
+    "zones": 100,
+    "sessions": 3,
+    "inside_zones_per_report": 1,
+    "active_radius_m": 10000,
+    "device_spread_degrees": 0.016
+  },
+  "generator": {
+    "elapsed_seconds": 20.03674716700334,
+    "counters": {
+      "scheduled": 40000,
+      "queue_high_water": 80,
+      "attempted": 40000,
+      "accepted": 40000
+    },
+    "accepted_reports_per_second": 1996.3320226884075,
+    "http_latency": {
+      "count": 40000,
+      "max_ms": 237,
+      "p50_ms": 29,
+      "p95_ms": 54,
+      "p99_ms": 69
+    },
+    "schedule_lag": {
+      "count": 40000,
+      "max_ms": 7,
+      "p50_ms": 1,
+      "p95_ms": 1,
+      "p99_ms": 2
+    },
+    "accepted_checksum": "13074748086708097642",
+    "configuration": {
+      "url": "http://127.0.0.1:8097",
+      "devices": 10000,
+      "interval": 5,
+      "duration": 20.0,
+      "concurrency": 128,
+      "queue_size": 4096,
+      "batch_size": 1,
+      "retries": 0,
+      "seed": 42,
+      "latitude": 56.9496,
+      "longitude": 24.1052,
+      "synchronized": false,
+      "prefix": "bench-6cd9f245"
+    }
+  },
+  "delivery_latency": {
+    "count": 40000,
+    "max_ms": 233,
+    "p50_ms": 27,
+    "p95_ms": 54,
+    "p99_ms": 68
+  },
+  "sessions": [
+    {
+      "session": 0,
+      "counters": {
+        "locations": 40000,
+        "inside_report": 40000
+      },
+      "checksums": {
+        "locations": "13074748086708097642",
+        "inside_report": "13074748086708097642"
+      },
+      "passed": true
+    },
+    {
+      "session": 1,
+      "counters": {
+        "locations": 40000,
+        "inside_report": 40000
+      },
+      "checksums": {
+        "locations": "13074748086708097642",
+        "inside_report": "13074748086708097642"
+      },
+      "passed": true
+    },
+    {
+      "session": 2,
+      "counters": {
+        "locations": 40000
+      },
+      "checksums": {
+        "locations": "13074748086708097642"
+      },
+      "passed": true
+    }
+  ],
+  "delivery_reconciled": true,
+  "pipeline_baseline": {
+    "counters": {},
+    "processing_ms": {
+      "count": 0
+    },
+    "loop_lag_ms": {
+      "count": 974,
+      "p50": 2.1388050008681603,
+      "p95": 5.800137998448918,
+      "p99": 7.169286000134889,
+      "max": 58.2672550008283
+    },
+    "pending_reports": 0,
+    "connections": 0,
+    "database_connections_checked_out": 0
+  },
+  "pipeline_final": {
+    "counters": {
+      "ingress_high_water": 128,
+      "frames_enqueued": 3020,
+      "bytes_enqueued": 33138672,
+      "reports_accepted": 40000,
+      "alerts_generated": 40000,
+      "batches_committed": 604
+    },
+    "processing_ms": {
+      "count": 604,
+      "p50": 6.72595200012438,
+      "p95": 11.197711999557214,
+      "p99": 35.05511000184924,
+      "max": 58.88792399855447
+    },
+    "loop_lag_ms": {
+      "count": 1058,
+      "p50": 1.8828440006473102,
+      "p95": 5.778799000836443,
+      "p99": 7.169286000134889,
+      "max": 58.2672550008283
+    },
+    "pending_reports": 0,
+    "connections": 3,
+    "database_connections_checked_out": 0
+  },
+  "samples": [
+    {
+      "counters": {},
+      "processing_ms": {
+        "count": 0
+      },
+      "loop_lag_ms": {
+        "count": 974,
+        "p50": 2.1388050008681603,
+        "p95": 5.800137998448918,
+        "p99": 7.169286000134889,
+        "max": 58.2672550008283
+      },
+      "pending_reports": 0,
+      "connections": 0,
+      "database_connections_checked_out": 0
+    },
+    {
+      "counters": {
+        "ingress_high_water": 128,
+        "frames_enqueued": 740,
+        "bytes_enqueued": 8226499,
+        "reports_accepted": 9930,
+        "alerts_generated": 9930,
+        "batches_committed": 148
+      },
+      "processing_ms": {
+        "count": 148,
+        "p50": 6.882912002765806,
+        "p95": 11.076001999754226,
+        "p99": 29.12441700027557,
+        "max": 58.88792399855447
+      },
+      "loop_lag_ms": {
+        "count": 994,
+        "p50": 2.0750020012201276,
+        "p95": 5.79969099999289,
+        "p99": 7.169286000134889,
+        "max": 58.2672550008283
+      },
+      "pending_reports": 50,
+      "connections": 3,
+      "database_connections_checked_out": 0
+    },
+    {
+      "counters": {
+        "ingress_high_water": 128,
+        "frames_enqueued": 1490,
+        "bytes_enqueued": 16499963,
+        "reports_accepted": 19917,
+        "alerts_generated": 19917,
+        "batches_committed": 298
+      },
+      "processing_ms": {
+        "count": 298,
+        "p50": 6.964121999772033,
+        "p95": 11.45138100037002,
+        "p99": 36.00378799819737,
+        "max": 58.88792399855447
+      },
+      "loop_lag_ms": {
+        "count": 1014,
+        "p50": 1.9891240008291788,
+        "p95": 5.778799000836443,
+        "p99": 6.977528999414062,
+        "max": 58.2672550008283
+      },
+      "pending_reports": 73,
+      "connections": 3,
+      "database_connections_checked_out": 1
+    },
+    {
+      "counters": {
+        "ingress_high_water": 128,
+        "frames_enqueued": 2260,
+        "bytes_enqueued": 24790754,
+        "reports_accepted": 29924,
+        "alerts_generated": 29924,
+        "batches_committed": 452
+      },
+      "processing_ms": {
+        "count": 452,
+        "p50": 6.733744001394371,
+        "p95": 11.197711999557214,
+        "p99": 35.05511000184924,
+        "max": 58.88792399855447
+      },
+      "loop_lag_ms": {
+        "count": 1034,
+        "p50": 1.9316210018587299,
+        "p95": 5.778799000836443,
+        "p99": 7.169286000134889,
+        "max": 58.2672550008283
+      },
+      "pending_reports": 66,
+      "connections": 3,
+      "database_connections_checked_out": 1
+    },
+    {
+      "counters": {
+        "ingress_high_water": 128,
+        "frames_enqueued": 3010,
+        "bytes_enqueued": 33078807,
+        "reports_accepted": 39928,
+        "alerts_generated": 39928,
+        "batches_committed": 602
+      },
+      "processing_ms": {
+        "count": 602,
+        "p50": 6.72595200012438,
+        "p95": 11.197711999557214,
+        "p99": 35.05511000184924,
+        "max": 58.88792399855447
+      },
+      "loop_lag_ms": {
+        "count": 1054,
+        "p50": 1.8718699975579511,
+        "p95": 5.775690002337797,
+        "p99": 7.169286000134889,
+        "max": 58.2672550008283
+      },
+      "pending_reports": 68,
+      "connections": 3,
+      "database_connections_checked_out": 1
+    }
+  ]
+}

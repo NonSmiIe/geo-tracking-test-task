@@ -6,6 +6,8 @@ On one laptop it sustains **300,000 devices reporting every 5 s (60,000 reports/
 
 **Design notes** (the brief, every decision with the options weighed, diagrams, and the measurements behind them): **https://claude.ai/artifact/5qGpLJVYQAY62WckcMui21**
 
+**Process record**: the plans, audits, adversarial reviews, decision log and hand-offs written while building it are in [`process/`](process/README.md).
+
 ## Run
 
 ```sh

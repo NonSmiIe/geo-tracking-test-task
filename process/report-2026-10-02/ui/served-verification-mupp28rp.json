@@ -1,0 +1,19 @@
+{
+  "utc":"2026-10-01T15:33:49.669Z",
+  "mode":"actual served files, no source route overlay",
+  "run":"mupp28rp",
+  "keyboard_focus_preserved":true,
+  "inspector_open":true,
+  "tab_pressed":true,
+  "owner_sessions_receive_alerts":true,
+  "microsecond_ordering":{"latitude":57.5002,"timestamp":"2026-10-01T15:33:54.000900Z"},
+  "other_user_private":{"alerts":0,"zones":0},
+  "cross_session_zone_changes":true,
+  "zone_delete":true,
+  "search_shortcut_after_escape":true,
+  "real_brief":true,
+  "assistant_status":"Connect an AI provider to enable planning suggestions. Fleet health and zone coverage work without it.",
+  "desktop":{"width":1440,"scroll_width":1440,"devices":30005,"fleet_rows":60,"canvas":1,"utc":"2026-10-01T15:33:54.867Z"},
+  "mobile":{"width":390,"scroll_width":390,"utc":"2026-10-01T15:33:55.065Z"},
+  "screenshots":["served-desktop-mupp28rp.png","served-mobile-mupp28rp.png"]
+}
