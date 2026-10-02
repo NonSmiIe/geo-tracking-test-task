@@ -67,16 +67,6 @@ RECORDS = labelled(
     "replayed",
 )
 ALERTS = Counter("fleet_processor_alerts", "Zone matches published", registry=PROCESSOR)
-ZONE_EVENTS = labelled(
-    Counter(
-        "fleet_processor_zone_events",
-        "Zone entries and exits recorded",
-        ["kind"],
-        registry=PROCESSOR,
-    ),
-    "entered",
-    "exited",
-)
 BATCHES = labelled(
     Counter(
         "fleet_processor_batches", "Processed batches, by outcome", ["outcome"], registry=PROCESSOR

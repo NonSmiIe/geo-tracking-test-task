@@ -228,11 +228,9 @@ async def record_mismatch(args: argparse.Namespace, prefix: str, expected: dict[
 
 
 async def forget_devices(project: str, prefix: str) -> None:
-    for table in ("zone_events", "zone_membership", "device_latest"):
-        await psql(project, f"DELETE FROM {table} WHERE device_id LIKE '{prefix}-%'")
-    for table in ("zone_events", "zone_membership", "device_latest"):
-        await psql(project, f"VACUUM (ANALYZE) {table}")
-        await psql(project, f"REINDEX TABLE {table}")
+    await psql(project, f"DELETE FROM device_latest WHERE device_id LIKE '{prefix}-%'")
+    await psql(project, "VACUUM (ANALYZE) device_latest")
+    await psql(project, "REINDEX TABLE device_latest")
 
 
 async def docker_stats(project: str) -> list[dict]:
@@ -293,6 +291,7 @@ async def benchmark(args: argparse.Namespace) -> dict:
     prefix = f"bench-{uuid4().hex[:8]}"
     alice, bob = prefix + "-alice", prefix + "-bob"
     sessions = [(alice, WORLD), (alice, WORLD), (bob, WORLD), (bob, PROBE)]
+    await psql(args.project, "DELETE FROM geozones WHERE user_id LIKE 'bench-%'")
     zones = []
     samples: list[dict] = []
     faults: list[dict] = []
@@ -333,6 +332,7 @@ async def benchmark(args: argparse.Namespace) -> dict:
             await asyncio.sleep(SCRAPE_SETTLE_SECONDS)
 
         await settle()
+        await forget_devices(args.project, "bench")
         baseline = await read(TOTALS)
         keep = False
         began = time.monotonic()

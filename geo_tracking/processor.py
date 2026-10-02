@@ -2,11 +2,9 @@ import asyncio
 import logging
 import signal
 from collections import defaultdict
-from collections.abc import Sequence
 from dataclasses import dataclass
 from time import monotonic, time
 from typing import Any
-from uuid import UUID
 
 import orjson
 from aiohttp import web
@@ -14,13 +12,10 @@ from aiokafka import AIOKafkaConsumer, ConsumerRebalanceListener, ConsumerRecord
 from aiokafka.errors import CommitFailedError, IllegalStateError
 from nats.aio.client import Client
 from nats.errors import Error as NatsError
-from sqlalchemy import RowMapping
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from geo_tracking.bus import Subjects, connect_nats, ensure_topic, kafka_topic_id
 from geo_tracking.db import DATABASE_ERRORS, Database
 from geo_tracking.logs import configure
-from geo_tracking.membership import Origin, Sample, walk
 from geo_tracking.metrics import (
     ALERTS,
     BATCH_SECONDS,
@@ -30,23 +25,11 @@ from geo_tracking.metrics import (
     PARTITIONS,
     PUBLISH_RETRIES,
     RECORDS,
-    ZONE_EVENTS,
     exposition,
     monitor_loop,
 )
 from geo_tracking.settings import Settings
-from geo_tracking.spatial import (
-    Record,
-    advance,
-    apply_membership,
-    match_records,
-    membership,
-    persist_latest,
-    persisted,
-    record_events,
-    replayed_events,
-    zone_event,
-)
+from geo_tracking.spatial import Record, advance, match_records, persist_latest, persisted
 from geo_tracking.tiles import position_subject
 
 logger = logging.getLogger("geo_tracking.processor")
@@ -123,13 +106,10 @@ class Processor(ConsumerRebalanceListener):
             limits = await persisted(session, self.topic_id, [tp.partition for tp in fetched])
             replayed: list[Record] = []
             live: list[Record] = []
-            origins: dict[tuple[str, int], Origin] = {}
             for tp, items in fetched.items():
                 limit = limits[tp.partition]
                 for item in items:
-                    record = orjson.loads(item.value)
-                    origins.setdefault((record[0], record[3]), (tp.partition, item.offset))
-                    (replayed if item.offset <= limit else live).append(record)
+                    (replayed if item.offset <= limit else live).append(orjson.loads(item.value))
             seen: set[tuple[str, int]] = set()
             replayed, live = self.unique(replayed, seen), self.unique(live, seen)
             advanced = await persist_latest(session, live)
@@ -141,7 +121,6 @@ class Processor(ConsumerRebalanceListener):
             ]
             emitted = replayed + fresh
             matches = await match_records(session, emitted) if emitted else []
-            events = await self.track(session, replayed, fresh, matches, origins)
             await advance(
                 session,
                 self.topic_id,
@@ -175,15 +154,6 @@ class Processor(ConsumerRebalanceListener):
             for subject, items in positions.items()
             for payload in frames("positions", items, limit)
         ]
-        transitions: dict[str, list[Any]] = defaultdict(list[Any])
-        for event in events:
-            ZONE_EVENTS.labels(event["kind"]).inc()
-            transitions[event["user_id"]].append(zone_event(event))
-        messages += [
-            (self.subjects.alerts(user_id), payload)
-            for user_id, items in transitions.items()
-            for payload in frames("zone_event", items, limit)
-        ]
         messages += [
             (self.subjects.alerts(user_id), payload)
             for user_id, items in alerts.items()
@@ -195,38 +165,6 @@ class Processor(ConsumerRebalanceListener):
             oldest=min((record[3] for record in emitted), default=None),
             started=started,
         )
-
-    async def track(
-        self,
-        session: AsyncSession,
-        replayed: list[Record],
-        fresh: list[Record],
-        matches: Sequence[RowMapping],
-        origins: dict[tuple[str, int], Origin],
-    ) -> list[RowMapping]:
-        events: list[RowMapping] = []
-        if replayed:
-            replayed_origins = [origins[record[0], record[3]] for record in replayed]
-            events += await replayed_events(session, self.topic_id, replayed_origins)
-        if not fresh:
-            return events
-        matched: dict[int, dict[UUID, tuple[str, int]]] = defaultdict(dict)
-        for match in matches:
-            index = match["report_index"] - len(replayed)
-            if index >= 0:
-                matched[index][match["zone_id"]] = (match["user_id"], match["zone_version"])
-        held, stale = await membership(session, list({record[0] for record in fresh}))
-        moved = walk(
-            held,
-            stale,
-            [
-                Sample(record[0], record[3], origins[record[0], record[3]], matched.get(index, {}))
-                for index, record in enumerate(fresh)
-            ],
-        )
-        await apply_membership(session, moved)
-        events += await record_events(session, self.topic_id, moved.transitions)
-        return events
 
     async def publish(self, messages: list[tuple[str, bytes]]) -> None:
         deadline = monotonic() + self.settings.publish_deadline_seconds

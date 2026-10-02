@@ -13,4 +13,3 @@
 .demo-panel{margin:0 22px 22px;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}.demo-panel>strong{font-size:15px}.demo-panel p{font-size:12px;line-height:1.6;margin:9px 0}.demo-panel #demo-status{color:var(--secondary)}.demo-panel .primary{margin:8px 0}.demo-panel .text-button{margin-top:4px}
 
 .alert-key{height:10px;width:10px;border:2px solid var(--accent);border-radius:50%;box-shadow:0 0 0 3px var(--accent-soft)}.alert-row.fresh{animation:alert-in .2s ease-out}@keyframes alert-in{from{background:var(--accent-soft)}to{background:transparent}}@media(prefers-reduced-motion:reduce){.alert-row.fresh{animation:none}}
-.alert-row.left .alert-symbol{color:var(--secondary)}.alert-row.left strong{font-weight:600}

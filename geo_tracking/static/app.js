@@ -10,8 +10,7 @@ let fleetDirty = true, alertsDirty = false, insightLoadId = 0, zoneLoadId = 0, s
 let demoPrefix = null, demoRunning = false;
 const deviceName = (id) => demoPrefix && id.startsWith(demoPrefix) ? `Truck ${id.slice(demoPrefix.length)}` : id;
 const positions = new Map(), zones = new Map(), alertFeed = new Map(), pendingPositions = new Map();
-const FEED_LIMIT = 80;
-let lastZoneEvent = 0;
+const EPISODE_GAP_MS = 30000, FEED_LIMIT = 80;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const map = L.map('map', { preferCanvas: true, zoomControl: false, attributionControl: false }).setView([56.9496, 24.1052], 13);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -234,56 +233,42 @@ function pulseZone(zoneId) {
   setTimeout(() => entry.circle.setStyle({ weight: 1.5, fillOpacity: entry.zone.active ? .09 : .025 }), 220);
 }
 function receiveAlerts(items) {
+  items = items.map((item) => ({ ...item, timestamp: isoTime(item.timestamp) }));
   if (demoPrefix) items = items.filter((item) => item.device_id.startsWith(demoPrefix));
   alertTotal += items.length;
   for (const item of items) {
-    const episode = alertFeed.get(`${item.device_id}|${item.zone_id}`);
-    if (episode && episode.exited === null) { episode.reports++; alertsDirty = true; }
+    const key = `${item.device_id}|${item.zone_id}`, at = Date.parse(item.timestamp), group = alertFeed.get(key);
+    if (group && at - group.last < EPISODE_GAP_MS) {
+      group.last = Math.max(group.last, at); group.reports++; alertFeed.delete(key); alertFeed.set(key, group);
+      continue;
+    }
+    alertFeed.delete(key);
+    alertFeed.set(key, { device_id: item.device_id, zone_id: item.zone_id, first: at, last: at, reports: 1, fresh: true });
+    if (currentView !== 'activity') unread++;
     pulseZone(item.zone_id);
   }
-  $('alert-count').textContent = count(alertTotal);
-}
-function receiveZoneEvents(items, live) {
-  for (const item of items) {
-    if (item.id <= lastZoneEvent) continue;
-    lastZoneEvent = item.id;
-    if (demoPrefix && !item.device_id.startsWith(demoPrefix)) continue;
-    const key = `${item.device_id}|${item.zone_id}`, at = item.timestamp / 1000;
-    const episode = alertFeed.get(key) || { device_id: item.device_id, zone_id: item.zone_id, entered: at - (item.dwell_us || 0) / 1000, reports: 0 };
-    alertFeed.delete(key);
-    if (item.kind === 'entered') Object.assign(episode, { entered: at, exited: null, reports: 0 });
-    else episode.exited = at;
-    Object.assign(episode, { last: at, fresh: live });
-    alertFeed.set(key, episode);
-    if (live && currentView !== 'activity') unread++;
-  }
   while (alertFeed.size > FEED_LIMIT) alertFeed.delete(alertFeed.keys().next().value);
+  $('alert-count').textContent = count(alertTotal);
   $('activity-badge').textContent = unread > 99 ? '99+' : count(unread); $('activity-badge').hidden = !unread;
   alertsDirty = true;
 }
-async function loadZoneEvents(version, who, ws) {
-  const page = await api(`/zone-events?limit=${FEED_LIMIT}${lastZoneEvent ? `&after=${lastZoneEvent}` : ''}`, {}, who);
-  if (current(version, who) && socket === ws) receiveZoneEvents(page.items, false);
-}
 setInterval(() => { if (alertsDirty && currentView === 'activity') renderAlerts(); }, 350);
 const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-const duration = (ms) => ms < 60000 ? `${Math.max(1, Math.round(ms / 1000))} s` : ms < 3600000 ? `${Math.round(ms / 60000)} min` : `${(ms / 3600000).toFixed(1)} h`;
-function alertText(episode) {
-  const zoneName = zones.get(episode.zone_id)?.zone.name || (demoPrefix ? 'Depot' : 'geofence'), device = deviceName(episode.device_id);
-  if (episode.exited === null) return [`${device} entered ${zoneName} · ${clock(episode.entered)}`, `inside for ${duration(Date.now() - episode.entered)} · ${count(episode.reports)} report${episode.reports === 1 ? '' : 's'}`];
-  return [`${device} left ${zoneName} · ${clock(episode.exited)}`, `stayed ${duration(episode.exited - episode.entered)}`];
+function alertText(group) {
+  const zoneName = zones.get(group.zone_id)?.zone.name || (demoPrefix ? 'Depot' : 'geofence');
+  return [`${deviceName(group.device_id)} entered ${zoneName} · ${clock(group.first)}`, `inside since ${clock(group.first)} · ${count(group.reports)} report${group.reports === 1 ? '' : 's'}`];
 }
 function renderAlerts() {
   alertsDirty = false;
   const rows = [...alertFeed.values()].reverse().map((group) => {
-    const row = element('div', undefined, `alert-row${group.fresh ? ' fresh' : ''}${group.exited === null ? '' : ' left'}`), symbol = element('span', undefined, 'alert-symbol'), content = element('div');
+    const row = element('div', undefined, `alert-row${group.fresh ? ' fresh' : ''}`), symbol = element('span', undefined, 'alert-symbol'), content = element('div');
     const [title, detail] = alertText(group);
     symbol.append(icon('zone')); content.append(element('strong', title), element('p', detail));
     const time = element('time', `last ${new Date(group.last).toLocaleTimeString()}`); time.dateTime = new Date(group.last).toISOString(); content.append(time); row.append(symbol, content);
     group.fresh = false;
     return row;
   });
-  if (!rows.length) { const empty = element('div', undefined, 'empty-state'); empty.append(icon('activity'), element('h3', 'Nothing has crossed your radar yet'), element('p', 'When a device enters or leaves one of your geofences, it appears here, with how long it stayed.')); rows.push(empty); }
+  if (!rows.length) { const empty = element('div', undefined, 'empty-state'); empty.append(icon('activity'), element('h3', 'Nothing has crossed your radar yet'), element('p', 'When a device reports from inside one of your geofences, it appears here once and keeps counting while it stays inside.')); rows.push(empty); }
   $('alerts').replaceChildren(...rows);
 }
 $('clear-alerts').onclick = () => { alertFeed.clear(); unread = 0; $('activity-badge').hidden = true; renderAlerts(); };
@@ -411,15 +396,14 @@ function connect(who, version) {
     if (message.type === 'ready') {
       status('live', 'Connected');
       ws.send(JSON.stringify({ type: 'viewport', ...viewport() }));
-      try { await loadZones(version, who, ws); await loadZoneEvents(version, who, ws); } catch (cause) { if (connectionCurrent(ws, version, generation)) error(cause.message); }
+      try { await loadZones(version, who, ws); } catch (cause) { if (connectionCurrent(ws, version, generation)) error(cause.message); }
     } else if (message.type === 'subscribed') loadSnapshot(who, version, ws, generation);
     else if (message.type === 'resync') {
       loadSnapshot(who, version, ws, generation);
-      try { await loadZones(version, who, ws); await loadZoneEvents(version, who, ws); } catch (cause) { if (connectionCurrent(ws, version, generation)) error(cause.message); }
+      try { await loadZones(version, who, ws); } catch (cause) { if (connectionCurrent(ws, version, generation)) error(cause.message); }
     }
     else if (message.type === 'positions') { received += message.items.length; message.items.forEach((item) => queuePosition(positionItem(item))); }
     else if (message.type === 'inside_report') receiveAlerts(message.items);
-    else if (message.type === 'zone_event') receiveZoneEvents(message.items, true);
     else if (message.type === 'zones_changed') {
       try { await loadZones(version, who, ws); if (connectionCurrent(ws, version, generation) && currentView === 'brief') loadInsights(); }
       catch (cause) { if (connectionCurrent(ws, version, generation)) error(cause.message); }
@@ -441,7 +425,7 @@ $('identity').onsubmit = (event) => {
   event.preventDefault(); const next = $('user').value.trim(); if (!next || next === user) { $('identity-panel').hidden = true; return; }
   demoPrefix = null; demoRunning = false; $('demo-all').hidden = true;
   user = next; epoch++; socket?.close(); snapshotController?.abort(); resetEdit();
-  zoneLoadId++; alertTotal = 0; unread = 0; lastZoneEvent = 0; alertFeed.clear(); pendingPositions.clear();
+  zoneLoadId++; alertTotal = 0; unread = 0; alertFeed.clear(); pendingPositions.clear();
   $('alert-count').textContent = '0'; $('activity-badge').hidden = true; renderAlerts();
   for (const entry of zones.values()) map.removeLayer(entry.circle); zones.clear(); renderZones(); $('zone-count').textContent = '0';
   $('insights').replaceChildren(element('p', 'Loading the latest picture…', 'view-description')); $('save-zone').disabled = false;
