@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import math
 import multiprocessing
+import subprocess
 import sys
 import time
 from collections import Counter
@@ -182,6 +183,14 @@ async def psql(project: str, query: str) -> str:
     return stdout.decode().strip()
 
 
+def build() -> str:
+    def git(*command: str) -> str:
+        return subprocess.run(["git", *command], capture_output=True, text=True).stdout.strip()
+
+    commit = git("rev-parse", "--short", "HEAD")
+    return f"{commit}-dirty" if git("status", "--porcelain", "--untracked-files=no") else commit
+
+
 async def stored_latest(project: str, prefix: str) -> dict:
     devices, total = (
         await psql(
@@ -219,8 +228,11 @@ async def record_mismatch(args: argparse.Namespace, prefix: str, expected: dict[
 
 
 async def forget_devices(project: str, prefix: str) -> None:
-    await psql(project, f"DELETE FROM device_latest WHERE device_id LIKE '{prefix}-%'")
-    await psql(project, "VACUUM (ANALYZE) device_latest")
+    for table in ("zone_events", "zone_membership", "device_latest"):
+        await psql(project, f"DELETE FROM {table} WHERE device_id LIKE '{prefix}-%'")
+    for table in ("zone_events", "zone_membership", "device_latest"):
+        await psql(project, f"VACUUM (ANALYZE) {table}")
+        await psql(project, f"REINDEX TABLE {table}")
 
 
 async def docker_stats(project: str) -> list[dict]:
@@ -444,6 +456,7 @@ async def benchmark(args: argparse.Namespace) -> dict:
     )
     fault_run = assess_fault_run(workload, pipeline, delivery) if args.fault else None
     return {
+        "commit": build(),
         "acceptance_policy": FAULT_POLICY if args.fault else POLICY,
         "faults_applied": faults_applied,
         "acceptance_passed": faults_applied and fault_run["passed"]

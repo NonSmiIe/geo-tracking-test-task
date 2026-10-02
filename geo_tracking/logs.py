@@ -27,7 +27,7 @@ class JsonFormatter(logging.Formatter):
         entry.update({k: v for k, v in record.__dict__.items() if k not in RECORD_FIELDS})
         if record.exc_info:
             entry["error"] = self.formatException(record.exc_info)
-        return orjson.dumps(entry, default=str).decode()
+        return orjson.dumps(entry, default=str, option=orjson.OPT_NON_STR_KEYS).decode()
 
 
 def configure(role: str) -> None:

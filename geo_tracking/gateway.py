@@ -9,10 +9,12 @@ import orjson
 from nats.aio.client import Client
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
+from nats.errors import Error as NatsError
 from pydantic import ValidationError
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from geo_tracking.bus import Subjects
+from geo_tracking.logs import REQUEST_ID
 from geo_tracking.metrics import (
     CONNECTIONS,
     EVICTIONS,
@@ -40,6 +42,7 @@ class Budget:
 class Connection:
     def __init__(self, user_id: str, socket: WebSocket, settings: Settings, budget: Budget):
         self.id = uuid4().hex
+        self.request_id = REQUEST_ID.get()
         self.budget = budget
         self.user_id = user_id
         self.socket = socket
@@ -139,14 +142,17 @@ class Gateway:
                 "dashboard evicted",
                 extra={
                     "user_id": connection.user_id,
+                    "session_id": connection.id,
+                    "request_id": connection.request_id,
                     "reason": reason,
                     "queued_bytes": connection.queued_bytes,
                 },
             )
         connection.stop(reason)
 
-    async def route(self, connection: Connection, subjects: set[str]) -> None:
+    async def route(self, connection: Connection, subjects: set[str]) -> bool:
         async with self.lock:
+            created = False
             for subject in connection.subjects - subjects:
                 listeners = self.routes[subject]
                 listeners.discard(connection)
@@ -161,8 +167,17 @@ class Gateway:
                         cb=self.handler(subject),
                         pending_bytes_limit=self.settings.nats_pending_bytes,
                     )
+                    created = True
                 self.routes[subject].add(connection)
             connection.subjects = set(subjects)
+            if not created:
+                return True
+            try:
+                async with asyncio.timeout(self.settings.send_timeout_seconds):
+                    await self.nats.flush()
+            except (NatsError, TimeoutError):
+                return False
+            return True
 
     def handler(self, subject: str) -> Callable[[Msg], Awaitable[None]]:
         async def receive(message: Msg) -> None:
@@ -197,8 +212,8 @@ class Gateway:
             except ValidationError:
                 connection.reason = "invalid_message"
                 return
-            await self.route(connection, subjects)
-            connection.enqueue(SUBSCRIBED)
+            if await self.route(connection, subjects):
+                connection.enqueue(SUBSCRIBED)
 
     async def serve(self, socket: WebSocket, user_id: str) -> None:
         if len(self.connections) + self.opening >= self.settings.max_connections:

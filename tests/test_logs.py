@@ -34,3 +34,19 @@ async def test_lines_logged_while_serving_a_request_carry_its_id() -> None:
     await traced({"type": "http", "headers": []}, None, None)  # type: ignore[arg-type]
     assert lines[0]["request_id"] == "edge-7"
     assert "request_id" not in lines[1]
+
+
+def test_context_with_integer_keys_is_still_one_json_line() -> None:
+    record = logging.makeLogRecord({"name": "geo_tracking.processor", "msg": "batch failed"})
+    record.offsets = {3: 120, 7: 44}
+    assert orjson.loads(JsonFormatter("processor").format(record))["offsets"] == {"3": 120, "7": 44}
+
+
+def test_every_outcome_series_exists_before_its_first_increment() -> None:
+    from geo_tracking.metrics import PROCESSOR
+
+    for outcome in ("committed", "failed"):
+        assert (
+            PROCESSOR.get_sample_value("fleet_processor_batches_total", {"outcome": outcome})
+            is not None
+        )

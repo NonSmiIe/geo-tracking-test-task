@@ -219,6 +219,7 @@ services:
     mem_limit: 64m
     cpus: 0.5
   tests:
+    security_opt: *hardened
     build:
       context: .
       dockerfile: Dockerfile.test

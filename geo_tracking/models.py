@@ -9,9 +9,12 @@ from sqlalchemy import (
     Computed,
     DateTime,
     Float,
+    ForeignKey,
+    Identity,
     Index,
     Integer,
     String,
+    UniqueConstraint,
 )
 from sqlalchemy import text as sql
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -69,3 +72,34 @@ class ConsumerProgress(Base):
     topic_id: Mapped[str] = mapped_column(String(32), primary_key=True)
     partition: Mapped[int] = mapped_column(Integer, primary_key=True)
     persisted: Mapped[int] = mapped_column(BigInteger)
+
+
+class ZoneMembership(Base):
+    __tablename__ = "zone_membership"
+    __table_args__ = (Index("zone_membership_zone", "zone_id"),)
+    device_id: Mapped[str] = mapped_column(String(96, collation="C"), primary_key=True)
+    zone_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("geozones.id", ondelete="CASCADE"), primary_key=True
+    )
+    zone_version: Mapped[int] = mapped_column(Integer)
+    entered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ZoneEvent(Base):
+    __tablename__ = "zone_events"
+    __table_args__ = (
+        CheckConstraint("kind IN ('entered', 'exited')", name="zone_event_kind"),
+        UniqueConstraint("topic_id", "partition", "offset", "zone_id", name="zone_event_origin"),
+        Index("zone_events_owner", "user_id", "id"),
+    )
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(96))
+    zone_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
+    zone_version: Mapped[int] = mapped_column(Integer)
+    device_id: Mapped[str] = mapped_column(String(96, collation="C"))
+    kind: Mapped[str] = mapped_column(String(8))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    dwell_us: Mapped[int | None] = mapped_column(BigInteger)
+    topic_id: Mapped[str] = mapped_column(String(32))
+    partition: Mapped[int] = mapped_column(Integer)
+    offset: Mapped[int] = mapped_column(BigInteger)

@@ -14,6 +14,7 @@ class Database:
             pool_size=pool_size or settings.database_pool,
             max_overflow=0,
             pool_timeout=1,
+            pool_pre_ping=True,
             connect_args={
                 "command_timeout": settings.database_timeout_ms / 1000 * 2,
                 "server_settings": {"statement_timeout": str(settings.database_timeout_ms)},

@@ -16,6 +16,13 @@ API, GATEWAY, PROCESSOR = ROLES["api"], ROLES["gateway"], ROLES["processor"]
 for registry in ROLES.values():
     ProcessCollector(registry=registry)
 
+
+def labelled(counter: Counter, *values: str) -> Counter:
+    for value in values:
+        counter.labels(value)
+    return counter
+
+
 INGESTED = Counter(
     "fleet_ingest_reports",
     "Reports offered to ingest, by transport and outcome",
@@ -35,19 +42,47 @@ FRAMES = Counter("fleet_gateway_frames", "Frames queued to dashboard sockets", r
 FRAME_BYTES = Counter(
     "fleet_gateway_frame_bytes", "Bytes queued to dashboard sockets", registry=GATEWAY
 )
-EVICTIONS = Counter(
-    "fleet_gateway_evictions", "Dashboards closed for falling behind", ["reason"], registry=GATEWAY
+EVICTIONS = labelled(
+    Counter(
+        "fleet_gateway_evictions",
+        "Dashboards closed for falling behind",
+        ["reason"],
+        registry=GATEWAY,
+    ),
+    "backlog_overflow",
+    "gateway_budget",
+    "send_timeout",
 )
 SLOW_CONSUMERS = Counter(
     "fleet_gateway_slow_consumers", "NATS slow-consumer errors", registry=GATEWAY
 )
 
-RECORDS = Counter(
-    "fleet_processor_records", "Consumed reports, by outcome", ["outcome"], registry=PROCESSOR
+RECORDS = labelled(
+    Counter(
+        "fleet_processor_records", "Consumed reports, by outcome", ["outcome"], registry=PROCESSOR
+    ),
+    "committed",
+    "stale",
+    "duplicate",
+    "replayed",
 )
 ALERTS = Counter("fleet_processor_alerts", "Zone matches published", registry=PROCESSOR)
-BATCHES = Counter(
-    "fleet_processor_batches", "Processed batches, by outcome", ["outcome"], registry=PROCESSOR
+ZONE_EVENTS = labelled(
+    Counter(
+        "fleet_processor_zone_events",
+        "Zone entries and exits recorded",
+        ["kind"],
+        registry=PROCESSOR,
+    ),
+    "entered",
+    "exited",
+)
+BATCHES = labelled(
+    Counter(
+        "fleet_processor_batches", "Processed batches, by outcome", ["outcome"], registry=PROCESSOR
+    ),
+    "committed",
+    "failed",
 )
 BATCH_SECONDS = Histogram(
     "fleet_processor_batch_seconds",

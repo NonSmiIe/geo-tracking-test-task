@@ -21,7 +21,7 @@ Open **http://127.0.0.1:8097**; API documentation is at **/docs**. Compose start
 | `kafka` | Kafka 4.1 (KRaft, single broker), topic `reports` with 24 partitions |
 | `nats` | NATS 2.11 core, live event routing |
 | `migrate` | One-shot `alembic upgrade head` before anything serves traffic |
-| `edge` | HAProxy, the only published port: `/ws` to `gateway`, everything else to `api`, both `leastconn` |
+| `edge` | HAProxy, the only application port: `/ws` to `gateway`, everything else to `api`, both `leastconn` |
 | `api` | FastAPI, one process per replica (`API_REPLICAS`, default 4): ingest, REST, demo |
 | `gateway` | FastAPI, one process per replica (`GATEWAYS`, default 2): dashboard WebSockets |
 | `processor` | Kafka consumer group (`PROCESSORS`, default 8 replicas): dedup, PostGIS matching, persistence, fanout |
@@ -56,7 +56,7 @@ dashboards ◀─────────── WS /ws ────────�
 
 **The log is durable across restarts and recreation.** Kafka writes to its named volume (it had been writing to the container's `/tmp`, so recreating the container would have dropped every unprocessed report; 500 reports acked with processors stopped now survive a forced recreation). Retention is 24 h or 1 GiB per partition. Processor progress is keyed by Kafka's topic ID, not its name, so a topic recreated under the same name starts with empty progress instead of having its records mistaken for replays.
 
-**One owner per device, without one process.** Keying by `device_id` puts every report of a device on one partition, and the consumer group gives each partition exactly one processor. That ownership removes the watermark race a shared processor pool would have, and Kafka moves partitions to the survivors when a processor dies. Each processor has one database writer. The writer takes everything Kafka has prefetched across the partitions it owns, up to 10,000 records, so a batch grows with load and the cost per row falls as traffic rises. Concurrent small transactions do the opposite: with one transaction per partition and four per processor, the upsert cost 34 µs per row at 300k against 5.8 µs on an idle database, and at 500k it saturated PostgreSQL. Publishing and the offset commit run in a second stage while the writer handles the next batch. A single serial chain per processor (fetch, transaction, publish, offset commit) was the limit at 500k, with the database idle at 1.7 of its 3 cores. In one transaction the writer:
+**One owner per device, without one process.** Keying by `device_id` puts every report of a device on one partition, and the consumer group gives each partition exactly one processor. That ownership removes the watermark race a shared processor pool would have, and Kafka moves partitions to the survivors when a processor dies. Each processor has one database writer. The writer takes everything Kafka has prefetched across the partitions it owns, up to 10,000 records, so a batch is what arrived while the previous one was written. Concurrent small transactions cost more: with one transaction per partition and four per processor, the upsert carried 247 rows at 34 µs per row at 300k ([statements](evidence/capacity/rung-300k-secured-statements.txt)), against 5.8 µs on an idle database, and at 500k they saturated PostgreSQL. Bigger batches alone do not make rows cheaper under load: a 100 ms fetch window doubled them to 999 rows and the cost stayed about 18 µs per row ([statements](evidence/capacity/rung-300k-batch-window-statements.txt)), a single run. Publishing and the offset commit run in a second stage while the writer handles the next batch. A single serial chain per processor (fetch, transaction, publish, offset commit) was the limit at 500k, with the database idle at 1.7 of its 3 cores. In one transaction the writer:
 
 1. discards equal `(device_id, timestamp)` duplicates, first wins;
 2. upserts each device's newest position, guarded by `WHERE reported_at < excluded.reported_at` so a zombie owner during a rebalance can never move a device backwards. `RETURNING old.reported_at` (PostgreSQL 18) hands back the watermark the row had, so one statement both persists and tells which samples are fresh: those newer than that watermark, on rows the guard let through. Everything else is stale;
@@ -117,9 +117,9 @@ Frames:
 | HTTP batch | 200 reports |
 | In-flight produces per api process (HTTP and sockets) | 8,192 |
 | In-flight produces per device socket | 1,024 |
-| Processor batch | up to 10,000 records across owned partitions, self-clocked: a batch is what arrived while the previous one was written. A 100 ms fetch window doubled batch size at 300k without lowering the cost per row, doubled Kafka CPU and raised p95 to 1,071 ms (`rung-300k-batch-window`) |
+| Processor batch | up to 10,000 records across owned partitions, self-clocked: a batch is what arrived while the previous one was written. A 100 ms fetch window doubled batch size at 300k without lowering the cost per row, raised Kafka's median CPU by 31% and p95 to 1,071 ms (`rung-300k-batch-window`, one run) |
 | NATS frame | at most 256 KiB, positions and alerts alike |
-| Database pool | 5 per api process, 4 per processor, no overflow, 1 s checkout |
+| Database pool | 5 per api process, 1 per processor (its single writer), no overflow, 1 s checkout, pre-ping on checkout |
 | Statement timeout | 2 s |
 | Zones per user | 1,000; radius ≤ 500 km; a zone may overlap at most 50 of its owner's active zones, so a report matches at most 51 zones per user |
 | Dashboard sessions | 128 per gateway, 8 per user per gateway, 16 per user at the edge |
@@ -127,7 +127,7 @@ Frames:
 | Per-session queue / send deadline | 8 MiB / 2 s; 128 MiB queued per gateway in total, beyond which the largest backlog is evicted |
 | Viewport subscriptions | 16 tiles per session, at most 4 viewport changes per second, 4 KiB per gateway frame |
 | Requests per user at the edge | 600 per 10 s (`429` beyond); request headers within 10 s, keep-alive 5 s |
-| Alert frame | 1,000 items |
+| Reports per device socket | 2,000 per second, burst 4,000 (token bucket; the socket is closed beyond) |
 
 All are `GEO_`-prefixed settings in `geo_tracking/settings.py`.
 
@@ -142,7 +142,7 @@ Kubernetes manifests for the stateless tiers, with the reasons behind their prob
 | processor | `PROCESSORS=N`, up to the partition count (24); Kafka rebalances partitions | — |
 | Kafka | one broker; `GEO_KAFKA_REPLICATION` sets the topic's replication factor | 3+ brokers with replication 3 |
 | NATS | one server; `GEO_NATS_SERVERS` takes a comma-separated list | a NATS cluster |
-| PostgreSQL | one primary; the write tier that does not scale out yet | sharding `device_latest` by `device_id` (Citus), zones as a reference table |
+| PostgreSQL | one primary; the write tier that does not scale out yet | Citus with `device_latest` and `consumer_progress` sharded by Kafka partition, zones as a reference table; the writer commits one transaction per worker it touches |
 
 Changing the partition count of a live topic remaps devices to partitions and breaks the one-owner rule for the moving devices. Repartition by creating a new topic, switching producers to it, and switching processors once the old topic has drained.
 
@@ -162,7 +162,7 @@ uv run ruff check && uv run ruff format --check
 uv run python scripts/benchmark.py --devices 100000 --duration 900
 ```
 
-The tests run against real PostGIS, Kafka and NATS; each test gets its own topic, consumer group and subject prefix. They cover metre-correct containment and boundaries, high latitudes, poles and the antimeridian, footprint-versus-exact equality, coordinate order, paused and deleted zones, owner scoping, the zone quota, duplicates, stale samples and in-batch zone crossings. They also cover dense overlap (60 zones over the same devices, no rejected report), private delivery to every owner session, viewport routing and retargeting, device-socket acknowledgements, replay after a database failure, a crash between commit and publish, watermarks surviving a processor restart, slow-socket eviction and the guided demo.
+The tests run against real PostGIS, Kafka and NATS; each test gets its own topic, consumer group and subject prefix. They cover metre-correct containment and boundaries, high latitudes, poles and the antimeridian, footprint-versus-exact equality, coordinate order, paused and deleted zones, owner scoping, the zone quota, duplicates, stale samples and in-batch zone crossings. They also cover dense overlap (51 zones over the same devices, the most the overlap bound allows; no rejected report), private delivery to every owner session, viewport routing and retargeting, device-socket acknowledgements, replay after a database failure, a crash between commit and publish, watermarks surviving a processor restart, slow-socket eviction and the guided demo.
 
 The benchmark observes four dashboard sessions, each in its own process: two for the owner of a zone covering the whole fleet, one for another user with a world view, and one for that user with a small probe viewport. It reconciles every position and alert against the generator by count and identity checksum, checks that processors committed exactly what was acknowledged and that consumer lag drained, and records latency from the scheduled timestamp and container resources. The criteria were declared before the runs: [policy v4](evidence/acceptance-policy-v4.md) for runs since the Prometheus metrics, [v3](evidence/acceptance-policy-v3.md) for the ones before.
 
@@ -172,7 +172,7 @@ Prometheus (`127.0.0.1:9097`) scrapes every api, gateway and processor replica, 
 
 | Alert | Means | First look | Action |
 | --- | --- | --- | --- |
-| `RetentionAtRisk` | Lag exceeds 30 min of ingest. Retention is 24 h or 1 GiB per partition, whichever comes first; at 300k devices the byte cap holds roughly 2 h, so a longer outage deletes acked reports unread | Consumer lag and partitions per processor | Add processors (up to 24). If PostgreSQL is saturated, more processors will not help: see `Statement time per second` |
+| `RetentionAtRisk` | Lag exceeds 30 min of ingest. Retention is 24 h or 1 GiB per partition, whichever comes first; at 300k devices the byte cap holds roughly 2 h (an estimate from 60k reports/s at about 100 bytes each over 24 partitions, not measured), so a longer outage deletes acked reports unread | Consumer lag and partitions per processor | Add processors (up to 24). If PostgreSQL is saturated, more processors will not help: see `Statement time per second` |
 | `ConsumerLagGrowing` | Processors commit slower than ingest accepts | Batch time p95, database statement time | Same as above, earlier |
 | `PartitionsUnowned` | Fewer partitions assigned than exist, including none at all; those devices are frozen | `fleet_processor_partitions` by instance, `RoleDown` | Restart or scale processors; a rebalance assigns orphans within seconds |
 | `FreshnessSlow` | p95 from report to published event is over 1 s | Lag, batch time, event-loop lag | Capacity: see the measured ceiling below |
@@ -182,7 +182,7 @@ Prometheus (`127.0.0.1:9097`) scrapes every api, gateway and processor replica, 
 | `DashboardsEvicted`, `GatewaySlowConsumer` | A dashboard was closed for falling behind, or NATS dropped messages for a gateway subscription | Fanout bytes per gateway | Add gateways. An evicted browser reconnects and resnapshots; on a NATS drop the gateway sends `resync` to the dashboards on that subject |
 | `EventLoopLag` | A role's loop is blocked over 250 ms at p99 | CPU of that role | Add replicas of that role |
 | `TargetDown` | The edge or an exporter is not answering scrapes | `docker compose ps` | Restart it |
-| `RoleDown` | No api, gateway or processor replica answers at all. One lost replica is not an alert: it leaves DNS discovery, its peers absorb the load, and symptom alerts fire if they cannot | `docker compose ps`, edge stats on :8404 | Start the role; check why every replica exited (`docker compose logs`) |
+| `RoleDown` | No api, gateway or processor replica answers at all. One lost replica is not an alert: it leaves DNS discovery, its peers absorb the load, and symptom alerts fire if they cannot | `docker compose ps`, the edge's `haproxy_*` metrics in Prometheus | Start the role; check why every replica exited (`docker compose logs`) |
 
 Logs are one JSON object per line on every role, with `role`, `level`, `logger`, `event` and the event's context. Processors log partition assignments and revocations, failed batches with partition and offset, lost offset commits, and their exit before a restart. Gateways log evictions (user, reason, queued bytes) and resyncs. librdkafka and aiokafka are routed through the same formatter. For example, `docker compose logs --no-log-prefix processor | jq 'select(.event == "partitions assigned")'` shows every rebalance.
 
@@ -192,28 +192,36 @@ Repartitioning (more than 24 processors) is a new topic, not `--alter`: create `
 
 ## Measured results
 
-Apple M4 Pro; the Docker VM has 14 CPUs and 8 GB, shared with unrelated containers, and the generator and the observing clients run on the macOS host. Every run uses 100 zones and four dashboard WebSocket clients; latency is position delivery to those clients, measured from the scheduled report time (alert latency is within 12 ms of it at every percentile in every run and is in each file). The first five rows predate the edge split, when api ran as 4 uvicorn workers in one container.
+Apple M4 Pro; the Docker VM has 14 CPUs and 8 GB, shared with unrelated containers, and the generator and the observing clients run on the macOS host. Every run uses 100 zones and four dashboard WebSocket clients; latency is position delivery to those clients, measured from the scheduled report time (alert latency is within 21 ms of it at every percentile in every run and is in each file). The first five rows predate the edge split, when api ran as 4 uvicorn workers in one container.
 
-| Devices · duration | Reports/s | Acknowledged | Position delivery p50 / p95 / p99 | API CPU | Processors | Verdict |
-| --- | ---: | ---: | ---: | ---: | ---: | --- |
-| 25,000 · 300 s | 4,999 | 1,500,000 / 1,500,000 | 28 / 65 / 135 ms | 156% | 4 × 19% | [passed](evidence/scaling-25k.json) |
-| 50,000 · 300 s | 9,996 | 3,000,000 / 3,000,000 | 29 / 74 / 219 ms | 200% | 4 × 20% | [passed](evidence/scaling-50k.json) |
-| 100,000 · 300 s | 19,992 | 6,000,000 / 6,000,000 | 41 / 196 / 422 ms | 234% | 4 × 19% | [passed](evidence/scaling-100k.json) |
-| 100,000 · 900 s | 19,998 | 18,000,000 / 18,000,000 | 41 / 190 / 527 ms | 232% | 4 × 20% | [passed](evidence/baseline-100k.json) |
-| 150,000 · 300 s | 29,993 | 9,000,000 / 9,000,000 | 53 / 216 / 653 ms | 265% | 4 × 19% | [failed: Kafka memory growth 87 MiB > 64](evidence/capacity/rung-150k.json) |
-| 150,000 · 300 s, edge + 4 api + 2 gateway replicas | 29,993 | 9,000,000 / 9,000,000 | 71 / 278 / 510 ms | 4 × 58% + gateways 46% + edge 51% | 4 × 17% | [passed](evidence/capacity/rung-150k-h1.json) |
-| 200,000 · 300 s, edge topology | 39,940 | 12,000,000 / 12,000,000 | 310 / 1,393 / 2,093 ms | 4 × 67%; PostgreSQL 194% | 4 × 16% | [failed: p95 over 1 s](evidence/capacity/rung-200k.json) |
-| 200,000 · 300 s, grid cell instead of device GiST | 39,959 | 12,000,000 / 12,000,000 | 114 / 448 / 768 ms | 4 × 60%; PostgreSQL 105% | 4 × 17% | [passed](evidence/capacity/rung-200k-h2.json) |
-| 300,000 · 300 s, 4 processors | 59,921 | 18,000,000 / 18,000,000 | 32 / 49 / 52 s | 4 × 70%; PostgreSQL 155% | 4 × 18% | [failed: processors commit 50k/s, lag grows](evidence/capacity/rung-300k.json) |
-| 300,000 · 300 s, 8 processors | 59,792 | 18,000,000 / 18,000,000 | 0.5 / 3.4 / 5.1 s | 4 × 69%; PostgreSQL 193% | 8 × 14% | [failed: p95 over 1 s, Kafka memory growth](evidence/capacity/rung-300k-p8.json) |
-| 300,000 · 300 s, framed `/ingest`, PostgreSQL 18 upsert-returns-watermark, Prometheus policy v4 | 59,935 | 18,000,000 / 18,000,000 | 249 / 753 / 1,155 ms | 4 × 61%; PostgreSQL 119% | 8 × 14% | [passed](evidence/capacity/rung-300k-s1.json) |
-| 500,000 · 300 s, librdkafka producer | 99,682 | 30,000,000 / 30,000,000 | 88 / 100+ s | 4 × 64%; PostgreSQL 171% | 8 × 17% | [failed: processors commit 58k/s](evidence/capacity/rung-500k.json) |
-| 300,000 · 300 s, one lane per partition, 4 transactions per processor, exact timestamps | 59,935 | 18,000,000 / 18,000,000 | 421 / 1,082 / 1,598 ms | 4 × 56%; PostgreSQL 151% | 8 × 23% | [failed: p95 over 1 s](evidence/capacity/rung-300k-exact-timestamps.json) |
-| 300,000 · 300 s, one writer per processor | 59,986 | 18,000,000 / 18,000,000 | 314 / 876 / 1,286 ms | 4 × 52%; PostgreSQL 125% | 8 × 19% | [passed](evidence/capacity/rung-300k-one-writer.json) |
-| 300,000 · 300 s, one writer, 100 ms fetch window | 59,992 | 18,000,000 / 18,000,000 | 322 / 1,071 / 1,583 ms | 4 × 57%; PostgreSQL 132% | 8 × 22% | [failed: p95 over 1 s; window reverted](evidence/capacity/rung-300k-batch-window.json) |
-| 500,000 · 300 s, one lane per partition | 99,757 | 30,000,000 / 30,000,000 | 67 / 95 s | 4 × 80%; PostgreSQL 282% of 300% | 8 × 26% | [failed: PostgreSQL at its CPU limit; generator late](evidence/capacity/rung-500k-s4.json) |
+<!-- results:start -->
+| Run | Build | Reports/s | Acknowledged | Position delivery p50 / p95 / p99 | api CPU | PostgreSQL | Processors | Verdict |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 25,000 · 300 s | — | 4,999 | 1,500,000 / 1,500,000 | 28 ms / 65 ms / 135 ms | 156% | 40% | 4 × 19% | [passed](evidence/scaling-25k.json) |
+| 50,000 · 300 s | — | 9,996 | 3,000,000 / 3,000,000 | 29 ms / 74 ms / 219 ms | 200% | 54% | 4 × 20% | [passed](evidence/scaling-50k.json) |
+| 100,000 · 300 s | — | 19,992 | 6,000,000 / 6,000,000 | 41 ms / 196 ms / 422 ms | 234% | 92% | 4 × 19% | [passed](evidence/scaling-100k.json) |
+| 100,000 · 900 s | — | 19,998 | 18,000,000 / 18,000,000 | 41 ms / 190 ms / 527 ms | 232% | 90% | 4 × 20% | [passed](evidence/baseline-100k.json) |
+| 150,000 · 300 s | — | 29,993 | 9,000,000 / 9,000,000 | 53 ms / 216 ms / 653 ms | 265% | 125% | 4 × 19% | [failed: Kafka memory growth 87 MiB > 64](evidence/capacity/rung-150k.json) |
+| 150,000 · 300 s, edge + 4 api + 2 gateway replicas | — | 29,993 | 9,000,000 / 9,000,000 | 71 ms / 278 ms / 510 ms | 4 × 58% | 127% | 4 × 17% | [passed](evidence/capacity/rung-150k-h1.json) |
+| 200,000 · 300 s, edge topology | — | 39,940 | 12,000,000 / 12,000,000 | 310 ms / 1,393 ms / 2,093 ms | 4 × 67% | 194% | 4 × 16% | [failed: p95 over 1 s](evidence/capacity/rung-200k.json) |
+| 200,000 · 300 s, grid cell instead of device GiST | — | 39,959 | 12,000,000 / 12,000,000 | 114 ms / 448 ms / 768 ms | 4 × 60% | 105% | 4 × 17% | [passed](evidence/capacity/rung-200k-h2.json) |
+| 300,000 · 300 s, 4 processors | — | 59,921 | 18,000,000 / 18,000,000 | 32.4 s / 48.7 s / 51.5 s | 4 × 71% | 155% | 4 × 18% | [failed: processors commit 50k/s, lag grows](evidence/capacity/rung-300k.json) |
+| 300,000 · 300 s, 8 processors | — | 59,792 | 18,000,000 / 18,000,000 | 539 ms / 3,432 ms / 5,120 ms | 4 × 69% | 193% | 8 × 13% | [failed: p95 over 1 s, Kafka memory growth](evidence/capacity/rung-300k-p8.json) |
+| 300,000 · 300 s, 6 api replicas, 8 processors | — | 58,688 | 17,669,957 / 18,000,000 | 100.0 s / 100.0 s / 100.0 s | 6 × 79% | 178% | 8 × 18% | [failed: api readiness probed Kafka; saturated replicas left rotation](evidence/capacity/rung-300k-h5.json) |
+| 300,000 · 300 s, framed `/ingest`, PostgreSQL 18 upsert-returns-watermark, Prometheus policy v4 | — | 59,935 | 18,000,000 / 18,000,000 | 249 ms / 753 ms / 1,155 ms | 4 × 61% | 119% | 8 × 14% | [passed](evidence/capacity/rung-300k-s1.json) |
+| 500,000 · 300 s, librdkafka producer | — | 99,682 | 30,000,000 / 30,000,000 | 88.5 s / 100.0 s / 100.0 s | 4 × 64% | 171% | 8 × 17% | [failed: processors commit 58k/s](evidence/capacity/rung-500k.json) |
+| 500,000 · 300 s, one lane per partition | — | 99,757 | 30,000,000 / 30,000,000 | 66.9 s / 95.4 s / 99.5 s | 4 × 79% | 282% | 8 × 26% | [failed: PostgreSQL at its CPU limit; generator late](evidence/capacity/rung-500k-s4.json) |
+| 300,000 · 300 s, after the security lens | — | 59,911 | 18,000,000 / 18,000,000 | 375 ms / 981 ms / 1,448 ms | 4 × 52% | 136% | 8 × 21% | [failed: p95 over 1 s for alerts](evidence/capacity/rung-300k-secured.json) |
+| 300,000 · 300 s, one lane per partition, 1 transaction per processor | — | 59,915 | 18,000,000 / 18,000,000 | 564 ms / 1,335 ms / 1,939 ms | 4 × 52% | 124% | 8 × 17% | [failed: ingest clamped future timestamps; a false watchdog kill](evidence/capacity/rung-300k-tx1.json) |
+| 300,000 · 300 s, the same, repeated | — | 59,918 | 18,000,000 / 18,000,000 | 574 ms / 1,515 ms / 2,113 ms | 4 × 53% | 134% | 8 × 18% | [failed: ingest clamped future timestamps](evidence/capacity/rung-300k-tx1-repro.json) |
+| 300,000 · 300 s, one lane per partition, 4 transactions per processor, exact timestamps | — | 59,823 | 18,000,000 / 18,000,000 | 421 ms / 1,082 ms / 1,598 ms | 4 × 54% | 149% | 8 × 22% | [failed: p95 over 1 s](evidence/capacity/rung-300k-exact-timestamps.json) |
+| 300,000 · 300 s, one writer per processor | — | 59,917 | 18,000,000 / 18,000,000 | 314 ms / 876 ms / 1,286 ms | 4 × 51% | 125% | 8 × 18% | [passed](evidence/capacity/rung-300k-one-writer.json) |
+| 300,000 · 300 s, one writer, 100 ms fetch window | — | 59,893 | 18,000,000 / 18,000,000 | 322 ms / 1,071 ms / 1,583 ms | 4 × 55% | 128% | 8 × 18% | [failed: p95 over 1 s; window reverted](evidence/capacity/rung-300k-batch-window.json) |
+| 300,000 · 300 s, one writer, build 10afc79, repeat 1 | — | 59,899 | 18,000,000 / 18,000,000 | 597 ms / 1,501 ms / 2,111 ms | 4 × 54% | 153% | 8 × 21% | [failed: p95 over 1 s; DB statement time 2.0 s/s against 1.59, cause open](evidence/capacity/rung-300k-head-1.json) |
+| 300,000 · 300 s, one writer, build 10afc79, repeat 2 | — | 59,915 | 18,000,000 / 18,000,000 | 431 ms / 1,218 ms / 1,678 ms | 4 × 55% | 156% | 8 × 19% | [failed: p95 over 1 s; DB statement time 2.0 s/s against 1.59, cause open](evidence/capacity/rung-300k-head-2.json) |
+<!-- results:end -->
 
-**The ceiling on this laptop is between 300,000 and 500,000 devices, and it is the machine, not a tier.** At 500k the server containers used 10.8 cores of 14 (median), and the generator could not hold its own schedule: 126,796 reports were more than 100 ms late, which fails the workload check. `top` showed the host at 99% during that run (observed, not stored). [An idle-database probe](evidence/capacity/upsert-probe.txt) puts the upsert at 11.6 ms per 2,000 rows (5.8 µs per row); under that contention it averaged 143 ms ([statements](evidence/capacity/rung-500k-s4-statements.txt)). Going further needs more hardware: a second machine for the load, or the per-partition shards described in [Scaling out](#scaling-out). Two 300k runs are not in the table because they measured the harness, not the service: one on a table holding 2M rows left by earlier runs: a cold 2,000-id watermark read took 159 ms against 14 ms warm, an observation not stored ([kept](evidence/capacity/rung-300k-p8-progress.json)). In the other, the edge logged "backend 'api' has no server available" while a Kafka-probing readiness check timed out on every saturated replica; the logs were not preserved ([kept](evidence/capacity/rung-300k-h5.json); that check is now deleted). In every passed run all four sessions reconciled exactly, including the probe viewport, which received precisely the positions in its subscribed tiles. The earlier single-process design's 10,000-device runs remain in `evidence/` under [policy v2](evidence/acceptance-policy.md).
+**The ceiling on this laptop is between 300,000 and 500,000 devices, and it is the machine, not a tier.** At 500k the server containers used 10.8 cores of 14 (median), and the generator could not hold its own schedule: 126,796 reports were more than 100 ms late, which fails the workload check. `top` showed the host at 99% during that run (observed, not stored). [An idle-database probe](evidence/capacity/upsert-probe.txt) puts the upsert at 11.6 ms per 2,000 rows (5.8 µs per row); under that contention it averaged 143 ms ([statements](evidence/capacity/rung-500k-s4-statements.txt)). Going further needs more hardware: a second machine for the load, or the per-partition shards described in [Scaling out](#scaling-out). One 300k run is not in the table because it measured the harness, not the service: it ran on a table holding 2M rows left by earlier runs, where a cold 2,000-id watermark read took 159 ms against 14 ms warm, an observation not stored ([kept](evidence/capacity/rung-300k-p8-progress.json)). The `6 api replicas` row was a service defect: a Kafka-probing readiness check timed out on every saturated replica and the edge had no api left; that check is deleted. The two `1 transaction per processor` rows failed reconciliation because ingest rewrote timestamps ahead of the server clock; a scan of Kafka matched PostgreSQL exactly, so the processor lost nothing ([forensics](evidence/capacity/rung-300k-tx1.kafka-forensics.json)), and that rewrite is deleted. In every passed run all four sessions reconciled exactly, including the probe viewport, which received precisely the positions in its subscribed tiles. The earlier single-process design's 10,000-device runs remain in `evidence/` under [policy v2](evidence/acceptance-policy.md).
 
 ### Failure campaign
 

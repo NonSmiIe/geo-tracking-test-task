@@ -123,11 +123,13 @@ async def update_zone(
         await session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:user))"), {"user": user})
         zone = await owned(session, zone_id, user)
         values = payload.model_dump(exclude_unset=True)
+        rematch = not values.keys().isdisjoint({"latitude", "radius_m", "active"})
         if "latitude" in values:
             zone.center = center(values.pop("latitude"), values.pop("longitude"))
         for key, value in values.items():
             setattr(zone, key, value)
-        zone.version += 1
+        if rematch:
+            zone.version += 1
         await session.flush()
         await session.refresh(zone)
         await bound_overlap(session, zone, services.settings.max_zone_overlap)

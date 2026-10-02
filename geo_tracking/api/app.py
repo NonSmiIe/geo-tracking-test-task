@@ -11,7 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from geo_tracking.api import demo, devices, geozones, health, locations
+from geo_tracking.api import demo, devices, geozones, health, locations, zone_events
 from geo_tracking.api.context import RequestContext
 from geo_tracking.api.limits import BodyLimit
 from geo_tracking.api.services import Services, zones_changed
@@ -76,7 +76,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(RequestContext)
     for error_type in DATABASE_ERRORS:
         app.add_exception_handler(error_type, database_unavailable)
-    for module in (locations, geozones, devices, demo, health):
+    for module in (locations, geozones, zone_events, devices, demo, health):
         app.include_router(module.router)
 
     original = app.openapi

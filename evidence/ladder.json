@@ -1,0 +1,112 @@
+[
+  {
+    "file": "evidence/scaling-25k.json",
+    "label": "",
+    "reason": ""
+  },
+  {
+    "file": "evidence/scaling-50k.json",
+    "label": "",
+    "reason": ""
+  },
+  {
+    "file": "evidence/scaling-100k.json",
+    "label": "",
+    "reason": ""
+  },
+  {
+    "file": "evidence/baseline-100k.json",
+    "label": "",
+    "reason": ""
+  },
+  {
+    "file": "evidence/capacity/rung-150k.json",
+    "label": "",
+    "reason": "Kafka memory growth 87 MiB > 64"
+  },
+  {
+    "file": "evidence/capacity/rung-150k-h1.json",
+    "label": "edge + 4 api + 2 gateway replicas",
+    "reason": ""
+  },
+  {
+    "file": "evidence/capacity/rung-200k.json",
+    "label": "edge topology",
+    "reason": "p95 over 1 s"
+  },
+  {
+    "file": "evidence/capacity/rung-200k-h2.json",
+    "label": "grid cell instead of device GiST",
+    "reason": ""
+  },
+  {
+    "file": "evidence/capacity/rung-300k.json",
+    "label": "4 processors",
+    "reason": "processors commit 50k/s, lag grows"
+  },
+  {
+    "file": "evidence/capacity/rung-300k-p8.json",
+    "label": "8 processors",
+    "reason": "p95 over 1 s, Kafka memory growth"
+  },
+  {
+    "file": "evidence/capacity/rung-300k-s1.json",
+    "label": "framed `/ingest`, PostgreSQL 18 upsert-returns-watermark, Prometheus policy v4",
+    "reason": ""
+  },
+  {
+    "file": "evidence/capacity/rung-500k.json",
+    "label": "librdkafka producer",
+    "reason": "processors commit 58k/s"
+  },
+  {
+    "file": "evidence/capacity/rung-300k-exact-timestamps.json",
+    "label": "one lane per partition, 4 transactions per processor, exact timestamps",
+    "reason": "p95 over 1 s"
+  },
+  {
+    "file": "evidence/capacity/rung-300k-one-writer.json",
+    "label": "one writer per processor",
+    "reason": ""
+  },
+  {
+    "file": "evidence/capacity/rung-300k-batch-window.json",
+    "label": "one writer, 100 ms fetch window",
+    "reason": "p95 over 1 s; window reverted"
+  },
+  {
+    "file": "evidence/capacity/rung-500k-s4.json",
+    "label": "one lane per partition",
+    "reason": "PostgreSQL at its CPU limit; generator late"
+  },
+  {
+    "file": "evidence/capacity/rung-300k-h5.json",
+    "label": "6 api replicas, 8 processors",
+    "reason": "api readiness probed Kafka; saturated replicas left rotation"
+  },
+  {
+    "file": "evidence/capacity/rung-300k-secured.json",
+    "label": "after the security lens",
+    "reason": "p95 over 1 s for alerts"
+  },
+  {
+    "file": "evidence/capacity/rung-300k-tx1.json",
+    "label": "one lane per partition, 1 transaction per processor",
+    "reason": "ingest clamped future timestamps; a false watchdog kill"
+  },
+  {
+    "file": "evidence/capacity/rung-300k-tx1-repro.json",
+    "label": "the same, repeated",
+    "reason": "ingest clamped future timestamps"
+  },
+  {
+    "file": "evidence/capacity/rung-300k-head-1.json",
+    "label": "one writer, build 10afc79, repeat 1",
+    "reason": "p95 over 1 s; DB statement time 2.0 s/s against 1.59, cause open"
+  },
+  {
+    "file": "evidence/capacity/rung-300k-head-2.json",
+    "label": "one writer, build 10afc79, repeat 2",
+    "reason": "p95 over 1 s; DB statement time 2.0 s/s against 1.59, cause open"
+  }
+]
