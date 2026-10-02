@@ -1,0 +1,48 @@
+{
+  "ran_at": "2026-10-02T01:20:39.792645+00:00",
+  "drills": [
+    {
+      "drill": "database stopped",
+      "expected": [
+        "BatchesFailing"
+      ],
+      "fired_after_seconds": {
+        "BatchesFailing": 8.5
+      },
+      "passed": true
+    },
+    {
+      "drill": "every processor stopped",
+      "expected": [
+        "PartitionsUnowned",
+        "RoleDown:processor"
+      ],
+      "fired_after_seconds": {
+        "RoleDown:processor": 43.0,
+        "PartitionsUnowned": 67.1
+      },
+      "passed": true
+    },
+    {
+      "drill": "every api killed",
+      "expected": [
+        "RoleDown:api"
+      ],
+      "fired_after_seconds": {
+        "RoleDown:api": 42.7
+      },
+      "passed": true
+    },
+    {
+      "drill": "edge stopped",
+      "expected": [
+        "TargetDown:edge"
+      ],
+      "fired_after_seconds": {
+        "TargetDown:edge": 38.4
+      },
+      "passed": true
+    }
+  ],
+  "passed": true
+}

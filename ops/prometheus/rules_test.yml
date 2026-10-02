@@ -159,8 +159,14 @@ tests:
         values: 0+10x40
       - series: fleet_event_loop_lag_seconds_bucket{job="api", le="+Inf", instance="api-1"}
         values: 0+10x40
+      - series: up{job="edge", instance="edge:8404"}
+        values: 0x40
       - series: up{job="gateway", instance="g1"}
         values: 0x40
+      - series: up{job="api", instance="a1"}
+        values: 1x40
+      - series: up{job="processor", instance="p1"}
+        values: 1x40
     alert_rule_test:
       - eval_time: 5m
         alertname: EventLoopLag
@@ -171,6 +177,42 @@ tests:
       - eval_time: 5m
         alertname: TargetDown
         exp_alerts:
-          - exp_labels: {severity: critical, job: gateway, instance: g1}
+          - exp_labels: {severity: critical, job: edge, instance: "edge:8404"}
             exp_annotations:
-              summary: "gateway g1 is not answering scrapes."
+              summary: "edge edge:8404 is not answering scrapes."
+      - eval_time: 5m
+        alertname: RoleDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: gateway}
+            exp_annotations:
+              summary: "No gateway replica is answering."
+
+  - name: a replica that leaves discovery is not an incident, every processor gone is
+    interval: 15s
+    input_series:
+      - series: up{job="api", instance="a1"}
+        values: 1x40
+      - series: up{job="gateway", instance="g1"}
+        values: 1x40
+      - series: up{job="processor", instance="p1"}
+        values: 1x8 stale
+      - series: fleet_processor_partitions{instance="p1"}
+        values: 24x8 stale
+      - series: kafka_topic_partitions{topic="reports"}
+        values: 24x40
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: RoleDown
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: RoleDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: processor}
+            exp_annotations:
+              summary: "No processor replica is answering."
+      - eval_time: 5m
+        alertname: PartitionsUnowned
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: Some partitions have no processor; their devices are frozen.

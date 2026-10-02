@@ -174,14 +174,15 @@ Prometheus (`127.0.0.1:9097`) scrapes every api, gateway and processor replica, 
 | --- | --- | --- | --- |
 | `RetentionAtRisk` | Lag exceeds 30 min of ingest. Retention is 24 h or 1 GiB per partition, whichever comes first; at 300k devices the byte cap holds roughly 2 h, so a longer outage deletes acked reports unread | Consumer lag and partitions per processor | Add processors (up to 24). If PostgreSQL is saturated, more processors will not help: see `Statement time per second` |
 | `ConsumerLagGrowing` | Processors commit slower than ingest accepts | Batch time p95, database statement time | Same as above, earlier |
-| `PartitionsUnowned` | Fewer partitions assigned than exist; those devices are frozen | `fleet_processor_partitions` by instance, `TargetDown` | Restart or scale processors; a rebalance assigns orphans within seconds |
+| `PartitionsUnowned` | Fewer partitions assigned than exist, including none at all; those devices are frozen | `fleet_processor_partitions` by instance, `RoleDown` | Restart or scale processors; a rebalance assigns orphans within seconds |
 | `FreshnessSlow` | p95 from report to published event is over 1 s | Lag, batch time, event-loop lag | Capacity: see the measured ceiling below |
 | `IngestShedding` | Over 1% of HTTP reports are refused for a full window (`503 ingest_capacity`; sockets are backpressured, never refused) | Produce window fill, Kafka health | Add api replicas if the windows are full but Kafka is healthy; otherwise fix Kafka |
 | `IngestWindowSaturated` | Kafka acknowledges slower than reports arrive on one replica | Kafka CPU and disk | Kafka capacity, not api |
 | `BatchesFailing` | Batches roll back and replay | Processor logs, database errors | Replays are safe; fix the database |
 | `DashboardsEvicted`, `GatewaySlowConsumer` | A dashboard was closed for falling behind, or NATS dropped messages for a gateway subscription | Fanout bytes per gateway | Add gateways. An evicted browser reconnects and resnapshots; on a NATS drop the gateway sends `resync` to the dashboards on that subject |
 | `EventLoopLag` | A role's loop is blocked over 250 ms at p99 | CPU of that role | Add replicas of that role |
-| `TargetDown` | A scrape target is not answering | `docker compose ps` | Restart it |
+| `TargetDown` | The edge or an exporter is not answering scrapes | `docker compose ps` | Restart it |
+| `RoleDown` | No api, gateway or processor replica answers at all. One lost replica is not an alert: it leaves DNS discovery, its peers absorb the load, and symptom alerts fire if they cannot | `docker compose ps`, edge stats on :8404 | Start the role; check why every replica exited (`docker compose logs`) |
 
 Logs are one JSON object per line on every role, with `role`, `level`, `logger`, `event` and the event's context. Processors log partition assignments and revocations, failed batches with partition and offset, lost offset commits, and their exit before a restart. Gateways log evictions (user, reason, queued bytes) and resyncs. librdkafka and aiokafka are routed through the same formatter. For example, `docker compose logs --no-log-prefix processor | jq 'select(.event == "partitions assigned")'` shows every rebalance.
 

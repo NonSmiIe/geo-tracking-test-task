@@ -23,7 +23,7 @@ groups:
         annotations:
           summary: Processors are committing slower than ingest accepts.
       - alert: PartitionsUnowned
-        expr: sum(fleet_processor_partitions) < max(kafka_topic_partitions{topic="reports"})
+        expr: (sum(fleet_processor_partitions) or vector(0)) < max(kafka_topic_partitions{topic="reports"})
         for: 1m
         labels: {severity: critical}
         annotations:
@@ -71,8 +71,17 @@ groups:
         annotations:
           summary: "{{ $labels.job }} event loops are blocked for over 250 ms at p99."
       - alert: TargetDown
-        expr: up == 0
+        expr: up{job=~"edge|kafka|postgres|nats"} == 0
         for: 30s
         labels: {severity: critical}
         annotations:
           summary: "{{ $labels.job }} {{ $labels.instance }} is not answering scrapes."
+      - alert: RoleDown
+        expr: >
+          label_replace(absent(up{job="api"} == 1), "job", "api", "", "")
+          or label_replace(absent(up{job="gateway"} == 1), "job", "gateway", "", "")
+          or label_replace(absent(up{job="processor"} == 1), "job", "processor", "", "")
+        for: 30s
+        labels: {severity: critical}
+        annotations:
+          summary: "No {{ $labels.job }} replica is answering."
